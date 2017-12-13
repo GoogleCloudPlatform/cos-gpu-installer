@@ -3,8 +3,8 @@
 Note: This is not an official Google product.
 
 This repository contains scripts to build Docker containers that can be used to
-download, compile and install GPU drivers on [Container-Optimized OS]
-(https://cloud.google.com/container-optimized-os/) images.
+download, compile and install GPU drivers on
+[Container-Optimized OS](https://cloud.google.com/container-optimized-os/) images.
 
 ## How to use
 
