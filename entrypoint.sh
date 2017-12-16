@@ -41,17 +41,35 @@ RETCODE_SUCCESS=0
 RETCODE_ERROR=1
 RETRY_COUNT=5
 
+_log() {
+  local -r prefix="$1"
+  shift
+  echo "[${prefix}$(date -u "+%Y-%m-%d %H:%M:%S %Z")] ""$*" >&2
+}
+
+info() {
+  _log "INFO    " "$*"
+}
+
+warn() {
+  _log "WARNING " "$*"
+}
+
+error() {
+  _log "ERROR   " "$*"
+}
+
 load_etc_os_release() {
   if [[ ! -f "${ROOT_OS_RELEASE}" ]]; then
-    echo "File ${ROOT_OS_RELEASE} not found, /etc/os-release from COS host must be mounted."
+    error "File ${ROOT_OS_RELEASE} not found, /etc/os-release from COS host must be mounted."
     exit ${RETCODE_ERROR}
   fi
   . "${ROOT_OS_RELEASE}"
-  echo "Running on COS build id ${BUILD_ID}"
+  info "Running on COS build id ${BUILD_ID}"
 }
 
 configure_kernel_module_locking() {
-  echo "Checking if third party kernel modules can be installed"
+  info "Checking if third party kernel modules can be installed"
   local -r kernel_cmdline="$(cat /proc/cmdline)"
   # Assume that kernel commandline will never contain "lsm.module_locking=1",
   # which is the default value when unspecified.
@@ -70,15 +88,15 @@ configure_kernel_module_locking() {
     popd
     sync
     umount "${mount_path}"
-    echo "Rebooting"
+    warn "Rebooting"
     echo b > /proc/sysrq-trigger
   fi
 }
 
 check_cached_version() {
-  echo "Checking cached version"
+  info "Checking cached version"
   if [[ ! -f "${CACHE_FILE}" ]]; then
-    echo "Cache file ${CACHE_FILE} not found."
+    info "Cache file ${CACHE_FILE} not found."
     return ${RETCODE_ERROR}
   fi
 
@@ -88,9 +106,8 @@ check_cached_version() {
   if [[ "${BUILD_ID}" == "${CACHE_BUILD_ID}" ]]; then
     if [[ "${NVIDIA_DRIVER_VERSION}" == \
           "${CACHE_NVIDIA_DRIVER_VERSION}" ]]; then
-      echo -n "Found existing driver installation "
-      echo -n "for image version ${BUILD_ID} and "
-      echo "driver version ${NVIDIA_DRIVER_VERSION}."
+      info "Found existing driver installation for image version ${BUILD_ID} \
+          and driver version ${NVIDIA_DRIVER_VERSION}."
       return ${RETCODE_SUCCESS}
     fi
   fi
@@ -103,29 +120,29 @@ CACHE_BUILD_ID=${BUILD_ID}
 CACHE_NVIDIA_DRIVER_VERSION=${NVIDIA_DRIVER_VERSION}
 __EOF__
 
-  echo "Updated cached version as:"
+  info "Updated cached version as:"
   cat "${CACHE_FILE}"
 }
 
 update_container_ld_cache() {
-  echo "Updating container's ld cache"
+  info "Updating container's ld cache"
   echo "${NVIDIA_INSTALL_DIR_CONTAINER}/lib64" > /etc/ld.so.conf.d/nvidia.conf
   ldconfig
 }
 
 download_kernel_src_archive() {
   local -r download_url="$1"
-  echo "Kernel source archive download URL: ${download_url}"
+  info "Kernel source archive download URL: ${download_url}"
   mkdir -p "${KERNEL_SRC_DIR}"
   pushd "${KERNEL_SRC_DIR}"
   local attempts=0
   until time curl -sfS "${download_url}" -o "${COS_KERNEL_SRC_ARCHIVE}"; do
     attempts=$(( ${attempts} + 1 ))
     if (( "${attempts}" >= "${RETRY_COUNT}" )); then
-      echo "Could not download kernel sources from ${download_url}, giving up."
+      error "Could not download kernel sources from ${download_url}, giving up."
       return ${RETCODE_ERROR}
     fi
-    echo "Error fetching kernel source archive from ${download_url}, retrying"
+    warn "Error fetching kernel source archive from ${download_url}, retrying"
     sleep 1
   done
   popd
@@ -144,7 +161,7 @@ download_kernel_src_from_git_repo() {
 
 download_kernel_src() {
   if [[ -z "$(ls -A "${KERNEL_SRC_DIR}")" ]]; then
-    echo "Kernel sources not found locally, downloading"
+    info "Kernel sources not found locally, downloading"
     mkdir -p "${KERNEL_SRC_DIR}"
     if ! download_kernel_src_from_gcs && ! download_kernel_src_from_git_repo; then
         return ${RETCODE_ERROR}
@@ -161,38 +178,38 @@ install_cross_toolchain_pkg() {
   # First, check if the toolchain path is available locally.
   local -r tc_path_file="${ROOT_MOUNT_DIR}/etc/toolchain-path"
   if [[ -f "${tc_path_file}" ]]; then
-    echo "Found toolchain path file locally"
+    info "Found toolchain path file locally"
     local -r tc_path="$(cat "${tc_path_file}")"
     local -r download_url="${CHROMIUMOS_SDK_GCS}/${tc_path}"
   else
     # Next, check if the toolchain path is available in GCS.
     local -r tc_path_url="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_URL_FILENAME}"
-    echo "Obtaining toolchain download URL from ${tc_path_url}"
+    info "Obtaining toolchain download URL from ${tc_path_url}"
     local -r download_url="$(curl -sfS "${tc_path_url}")"
   fi
-  echo "Downloading prebuilt toolchain from ${download_url}"
+  info "Downloading prebuilt toolchain from ${download_url}"
   # Next, download and extract the toolchain tarball.
   local -r pkg_name="$(basename "${download_url}")"
   local attempts=0
   until time curl -sfS "${download_url}" -o "${pkg_name}"; do
     attempts=$(( ${attempts} + 1 ))
     if (( "${attempts}" >= "${RETRY_COUNT}" )); then
-      echo "Could not download toolchain from ${download_url}, giving up."
+      error "Could not download toolchain from ${download_url}, giving up."
       return ${RETCODE_ERROR}
     fi
-    echo "Error fetching toolchain archive from ${download_url}, retrying"
+    warn "Error fetching toolchain archive from ${download_url}, retrying"
     sleep 1
   done
   tar xf "${pkg_name}"
   popd
-  echo "Configuring environment variables for cross-compilation"
+  info "Configuring environment variables for cross-compilation"
   export PATH="/build/bin:${PATH}"
   export SYSROOT="/build/usr/x86_64-cros-linux-gnu"
   export CC="x86_64-cros-linux-gnu-gcc"
 }
 
 configure_kernel_src() {
-  echo "Configuring kernel sources"
+  info "Configuring kernel sources"
   pushd "${KERNEL_SRC_DIR}"
   zcat /proc/config.gz > .config
   make olddefconfig
@@ -202,14 +219,14 @@ configure_kernel_src() {
   local kernel_version_uname="$(uname -r)"
   local kernel_version_src="$(cat include/generated/utsrelease.h | awk '{ print $3 }' | tr -d '"')"
   if [[ "${kernel_version_uname}" != "${kernel_version_src}" ]]; then
-    echo "Modifying kernel version magic string in source files"
+    info "Modifying kernel version magic string in source files"
     sed -i "s|${kernel_version_src}|${kernel_version_uname}|g" "include/generated/utsrelease.h"
   fi
   popd
 }
 
 configure_nvidia_installation_dirs() {
-  echo "Configuring installation directories"
+  info "Configuring installation directories"
   mkdir -p "${NVIDIA_INSTALL_DIR_CONTAINER}"
   pushd "${NVIDIA_INSTALL_DIR_CONTAINER}"
 
@@ -245,15 +262,14 @@ configure_nvidia_installation_dirs() {
 }
 
 download_nvidia_installer() {
-  echo -n "Downloading Nvidia installer ... "
+  info "Downloading Nvidia installer ... "
   pushd "${NVIDIA_INSTALL_DIR_CONTAINER}"
   curl -L -sS "${NVIDIA_DRIVER_DOWNLOAD_URL}" -o "${NVIDIA_INSTALLER_RUNFILE}"
   popd
-  echo "done!"
 }
 
 run_nvidia_installer() {
-  echo "Running Nvidia installer"
+  info "Running Nvidia installer"
   pushd "${NVIDIA_INSTALL_DIR_CONTAINER}"
   sh "${NVIDIA_INSTALLER_RUNFILE}" \
     --kernel-source-path="${KERNEL_SRC_DIR}" \
@@ -267,7 +283,7 @@ run_nvidia_installer() {
 }
 
 configure_cached_installation() {
-  echo "Configuring cached driver installation"
+  info "Configuring cached driver installation"
   update_container_ld_cache
   if ! lsmod | grep -q -w 'nvidia'; then
     insmod "${NVIDIA_INSTALL_DIR_CONTAINER}/drivers/nvidia.ko"
@@ -281,7 +297,7 @@ configure_cached_installation() {
 }
 
 verify_nvidia_installation() {
-  echo "Verifying Nvidia installation"
+  info "Verifying Nvidia installation"
   export PATH="${NVIDIA_INSTALL_DIR_CONTAINER}/bin:${PATH}"
   nvidia-smi
   # Create unified memory device file.
@@ -291,7 +307,7 @@ verify_nvidia_installation() {
 }
 
 update_host_ld_cache() {
-  echo "Updating host's ld cache"
+  info "Updating host's ld cache"
   echo "${NVIDIA_INSTALL_DIR_HOST}/lib64" >> "${ROOT_MOUNT_DIR}/etc/ld.so.conf"
   ldconfig -r "${ROOT_MOUNT_DIR}"
 }
@@ -302,9 +318,9 @@ main() {
   if check_cached_version; then
     configure_cached_installation
     verify_nvidia_installation
-    echo "Found cached version, NOT building the drivers."
+    info "Found cached version, NOT building the drivers."
   else
-    echo "Did not find cached version, building the drivers..."
+    info "Did not find cached version, building the drivers..."
     download_kernel_src
     install_cross_toolchain_pkg
     configure_nvidia_installation_dirs
@@ -313,7 +329,7 @@ main() {
     run_nvidia_installer
     update_cached_version
     verify_nvidia_installation
-    echo "Finished installing the drivers."
+    info "Finished installing the drivers."
   fi
   update_host_ld_cache
 }
