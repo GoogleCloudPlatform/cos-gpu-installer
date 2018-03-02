@@ -39,7 +39,7 @@ set +x
 
 RETCODE_SUCCESS=0
 RETCODE_ERROR=1
-RETRY_COUNT=5
+RETRY_COUNT=${RETRY_COUNT:-5}
 
 _log() {
   local -r prefix="$1"
