@@ -83,7 +83,7 @@ configure_kernel_module_locking() {
 
     pushd "${mount_path}"
     cp "${grub_cfg}" "${grub_cfg}.orig"
-    sed 's/cros_efi/cros_efi lsm.module_locking=0/g' \
+    sed 's/cros_efi/cros_efi lsm.module_locking=0 loadpin.enabled=0/g' \
       -i "efi/boot/grub.cfg"
     popd
     sync
