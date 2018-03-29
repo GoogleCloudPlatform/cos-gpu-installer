@@ -28,6 +28,7 @@ CHROMIUMOS_SDK_GCS="https://storage.googleapis.com/chromiumos-sdk"
 ROOT_OS_RELEASE="${ROOT_OS_RELEASE:-/root/etc/os-release}"
 KERNEL_SRC_DIR="${KERNEL_SRC_DIR:-/build/usr/src/linux}"
 NVIDIA_DRIVER_VERSION="${NVIDIA_DRIVER_VERSION:-390.30}"
+NVIDIA_DRIVER_MD5SUM="${NVIDIA_DRIVER_MD5SUM:-}"
 NVIDIA_DRIVER_DOWNLOAD_URL_DEFAULT="https://us.download.nvidia.com/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
 NVIDIA_DRIVER_DOWNLOAD_URL="${NVIDIA_DRIVER_DOWNLOAD_URL:-$NVIDIA_DRIVER_DOWNLOAD_URL_DEFAULT}"
 NVIDIA_INSTALL_DIR_HOST="${NVIDIA_INSTALL_DIR_HOST:-/var/lib/nvidia}"
@@ -266,6 +267,9 @@ download_nvidia_installer() {
   info "Downloading Nvidia installer ... "
   pushd "${NVIDIA_INSTALL_DIR_CONTAINER}"
   curl -L -sS "${NVIDIA_DRIVER_DOWNLOAD_URL}" -o "${NVIDIA_INSTALLER_RUNFILE}"
+  if [ ! -z "${NVIDIA_DRIVER_MD5SUM}" ]; then
+    echo "${NVIDIA_DRIVER_MD5SUM}" "${NVIDIA_INSTALLER_RUNFILE}" | md5sum --check
+  fi
   popd
 }
 
