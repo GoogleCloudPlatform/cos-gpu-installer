@@ -29,11 +29,8 @@ ROOT_OS_RELEASE="${ROOT_OS_RELEASE:-/root/etc/os-release}"
 KERNEL_SRC_DIR="${KERNEL_SRC_DIR:-/build/usr/src/linux}"
 NVIDIA_DRIVER_VERSION="${NVIDIA_DRIVER_VERSION:-390.46}"
 NVIDIA_DRIVER_MD5SUM="${NVIDIA_DRIVER_MD5SUM:-}"
-NVIDIA_DRIVER_DOWNLOAD_URL_DEFAULT="https://us.download.nvidia.com/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
-NVIDIA_DRIVER_DOWNLOAD_URL="${NVIDIA_DRIVER_DOWNLOAD_URL:-$NVIDIA_DRIVER_DOWNLOAD_URL_DEFAULT}"
 NVIDIA_INSTALL_DIR_HOST="${NVIDIA_INSTALL_DIR_HOST:-/var/lib/nvidia}"
 NVIDIA_INSTALL_DIR_CONTAINER="${NVIDIA_INSTALL_DIR_CONTAINER:-/usr/local/nvidia}"
-NVIDIA_INSTALLER_RUNFILE="$(basename "${NVIDIA_DRIVER_DOWNLOAD_URL}")"
 ROOT_MOUNT_DIR="${ROOT_MOUNT_DIR:-/root}"
 CACHE_FILE="${NVIDIA_INSTALL_DIR_CONTAINER}/.cache"
 set +x
@@ -263,12 +260,38 @@ configure_nvidia_installation_dirs() {
   popd
 }
 
+installer_default_download_url() {
+  # projects/000000000000/zones/us-west1-a -> us
+  local -r instance_location="$(curl -sfS "http://metadata.google.internal/computeMetadata/v1/instance/zone" -H "Metadata-Flavor: Google" | cut -d '/' -f4 | cut -d '-' -f1)"
+  declare -A location_mapping
+  location_mapping=( ["us"]="us" ["asia"]="asia" ["europe"]="eu" )
+  # Use us as default download location.
+  local -r download_location="${location_mapping[${instance_location}]:-us}"
+  echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/TESLA/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
+}
+
+get_nvidia_installer_url() {
+  echo "${NVIDIA_DRIVER_DOWNLOAD_URL:-$(installer_default_download_url)}"
+}
+
+get_nvidia_installer_runfile() {
+  # Cache NVIDIA_INSTALLER_RUNFILE value to avoid multiple metadata server
+  # access.
+  if [ ! -v NVIDIA_INSTALLER_RUNFILE ]; then
+    local -r nvidia_driver_download_url="$(get_nvidia_installer_url)"
+    NVIDIA_INSTALLER_RUNFILE="$(basename ${nvidia_driver_download_url})"
+  fi
+  echo ${NVIDIA_INSTALLER_RUNFILE}
+}
+
 download_nvidia_installer() {
   info "Downloading Nvidia installer ... "
   pushd "${NVIDIA_INSTALL_DIR_CONTAINER}"
-  curl -L -sS "${NVIDIA_DRIVER_DOWNLOAD_URL}" -o "${NVIDIA_INSTALLER_RUNFILE}"
+  local -r nvidia_driver_download_url="$(get_nvidia_installer_url)"
+  info "Downloading from ${nvidia_driver_download_url}"
+  curl -L -sS "${nvidia_driver_download_url}" -o "$(get_nvidia_installer_runfile)"
   if [ ! -z "${NVIDIA_DRIVER_MD5SUM}" ]; then
-    echo "${NVIDIA_DRIVER_MD5SUM}" "${NVIDIA_INSTALLER_RUNFILE}" | md5sum --check
+    echo "${NVIDIA_DRIVER_MD5SUM}" "$(get_nvidia_installer_runfile)" | md5sum --check
   fi
   popd
 }
@@ -276,7 +299,7 @@ download_nvidia_installer() {
 run_nvidia_installer() {
   info "Running Nvidia installer"
   pushd "${NVIDIA_INSTALL_DIR_CONTAINER}"
-  sh "${NVIDIA_INSTALLER_RUNFILE}" \
+  sh "$(get_nvidia_installer_runfile)" \
     --kernel-source-path="${KERNEL_SRC_DIR}" \
     --utility-prefix="${NVIDIA_INSTALL_DIR_CONTAINER}" \
     --opengl-prefix="${NVIDIA_INSTALL_DIR_CONTAINER}" \
