@@ -22,5 +22,6 @@ steps:
   - '-t'
   - 'gcr.io/${PROJECT_ID}/cos-gpu-installer:${_TAG}'
   - '.'
+  dir: 'container'
 images:
 - 'gcr.io/${PROJECT_ID}/cos-gpu-installer:${_TAG}'

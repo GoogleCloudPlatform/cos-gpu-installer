@@ -10,11 +10,16 @@ download, compile and install GPU drivers on
 
 Example command:
 ``` shell
+cat > /tmp/nvidia-installer-env << 'EOF'
+NVIDIA_DRIVER_VERSION=390.46
+COS_NVIDIA_INSTALLER_CONTAINER=gcr.io/cos-cloud/cos-gpu-installer:latest
+EOF
+
 gcloud compute instances create $USER-cos-gpu-test \
     --image-family cos-stable \
     --image-project cos-cloud \
     --accelerator=type=nvidia-tesla-k80 \
     --boot-disk-size=25GB \
     --maintenance-policy=TERMINATE \
-    --metadata-from-file "user-data=install-test-gpu.cfg"
+    --metadata-from-file "user-data=install-gpu.cfg,nvidia-installer-env=/tmp/nvidia-installer-env"
 ```
