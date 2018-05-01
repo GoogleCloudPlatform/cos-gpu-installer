@@ -260,7 +260,19 @@ configure_nvidia_installation_dirs() {
   popd
 }
 
+major_version() {
+  echo "$1" | cut -d "." -f 1
+}
+
 installer_default_download_url() {
+  if (( $(major_version "${NVIDIA_DRIVER_VERSION}") < 390 )); then
+    # Versions prior to 390 are downloaded from the upstream location.
+    info "Downloading Nvidia installer from https://us.download.nvidia.com/... "
+    echo "https://us.download.nvidia.com/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
+    return
+  fi
+
+  info "Downloading Nvidia installer from https://storage.googleapis.com/... "
   # projects/000000000000/zones/us-west1-a -> us
   local -r instance_location="$(curl -sfS "http://metadata.google.internal/computeMetadata/v1/instance/zone" -H "Metadata-Flavor: Google" | cut -d '/' -f4 | cut -d '-' -f1)"
   declare -A location_mapping
@@ -271,7 +283,10 @@ installer_default_download_url() {
 }
 
 get_nvidia_installer_url() {
-  echo "${NVIDIA_DRIVER_DOWNLOAD_URL:-$(installer_default_download_url)}"
+  if [ ! -v NVIDIA_DRIVER_DOWNLOAD_URL ]; then
+    NVIDIA_DRIVER_DOWNLOAD_URL="$(installer_default_download_url)"
+  fi
+  echo "${NVIDIA_DRIVER_DOWNLOAD_URL}"
 }
 
 get_nvidia_installer_runfile() {
