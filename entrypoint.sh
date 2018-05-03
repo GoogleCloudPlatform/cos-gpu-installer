@@ -314,7 +314,9 @@ download_nvidia_installer() {
 run_nvidia_installer() {
   info "Running Nvidia installer"
   pushd "${NVIDIA_INSTALL_DIR_CONTAINER}"
-  sh "$(get_nvidia_installer_runfile)" \
+  local -r dir_to_extract="/tmp/extract"
+  sh "$(get_nvidia_installer_runfile)" -x --target ${dir_to_extract}
+  "${dir_to_extract}/nvidia-installer" \
     --kernel-source-path="${KERNEL_SRC_DIR}" \
     --utility-prefix="${NVIDIA_INSTALL_DIR_CONTAINER}" \
     --opengl-prefix="${NVIDIA_INSTALL_DIR_CONTAINER}" \
