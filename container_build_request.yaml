@@ -21,6 +21,6 @@ steps:
   - 'build'
   - '-t'
   - 'gcr.io/${PROJECT_ID}/cos-gpu-installer:${_TAG}'
-  - '.'
+  - 'cos-gpu-installer-docker/'
 images:
 - 'gcr.io/${PROJECT_ID}/cos-gpu-installer:${_TAG}'
