@@ -17,14 +17,17 @@
 set -o errexit
 set -o nounset
 
-CUDA_TEST_CONTAINER="gcr.io/google_containers/cuda-vector-add:v0.1"
 GPU_INSTALLER_ENV_KEY="cos-gpu-installer-env"
 GPU_INSTALLER_ENV_PATH="/etc/gpu-installer-env"
+# The following environment variables may be changed by cos-gpu-installer-env.
+NVIDIA_INSTALL_DIR_HOST="/var/lib/nvidia"
+NVIDIA_INSTALL_DIR_CONTAINER="/usr/local/nvidia"
+CUDA_TEST_CONTAINER="gcr.io/google_containers/cuda-vector-add:v0.1"
 
 setup() {
   if [ ! -f "${GPU_INSTALLER_ENV_PATH}" ]; then
     /usr/share/google/get_metadata_value "attributes/${GPU_INSTALLER_ENV_KEY}" \
-      > "${GPU_INSTALLER_ENV_PATH}"
+      > "${GPU_INSTALLER_ENV_PATH}" || true
   fi
   source "${GPU_INSTALLER_ENV_PATH}"
 }
