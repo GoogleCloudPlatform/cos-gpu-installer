@@ -18,8 +18,11 @@
 set -o errexit
 set -o nounset
 
-GPU_INSTALLER_ENV_KEY="cos-gpu-installer-env"
-GPU_INSTALLER_ENV_PATH="/etc/gpu-installer-env"
+_GPU_INSTALLER_ENV_KEY="cos-gpu-installer-env"
+# Environment variable file should be stored in the same directory as
+# this script.
+_GPU_INSTALLER_ENV_PATH="$(dirname $0)/gpu-installer-env"
+
 # The following environment variables may be changed by cos-gpu-installer-env.
 COS_NVIDIA_INSTALLER_CONTAINER="gcr.io/cos-cloud/cos-gpu-installer:latest"
 NVIDIA_INSTALL_DIR_HOST="/var/lib/nvidia"
@@ -27,11 +30,12 @@ NVIDIA_INSTALL_DIR_CONTAINER="/usr/local/nvidia"
 ROOT_MOUNT_DIR="/root"
 
 setup() {
-  if [ ! -f "${GPU_INSTALLER_ENV_PATH}" ]; then
-    /usr/share/google/get_metadata_value "attributes/${GPU_INSTALLER_ENV_KEY}" \
-      > "${GPU_INSTALLER_ENV_PATH}" || true
+  # Always use environment variable from metadata if provided.
+  if /usr/share/google/get_metadata_value "attributes/${_GPU_INSTALLER_ENV_KEY}" \
+    > /tmp/gpu-installer-env; then
+    cp -f /tmp/gpu-installer-env "${_GPU_INSTALLER_ENV_PATH}"
   fi
-  source "${GPU_INSTALLER_ENV_PATH}"
+  source "${_GPU_INSTALLER_ENV_PATH}"
 
   mkdir -p "${NVIDIA_INSTALL_DIR_HOST}"
   # Make NVIDIA_INSTALL_DIR_HOST executable by bind mounting it.
@@ -48,7 +52,7 @@ main() {
     --volume "${NVIDIA_INSTALL_DIR_HOST}":"${NVIDIA_INSTALL_DIR_CONTAINER}" \
     --volume /dev:/dev \
     --volume "/":"${ROOT_MOUNT_DIR}" \
-    --env-file "${GPU_INSTALLER_ENV_PATH}" \
+    --env-file "${_GPU_INSTALLER_ENV_PATH}" \
     "${COS_NVIDIA_INSTALLER_CONTAINER}"
   # Verify installation.
   ${NVIDIA_INSTALL_DIR_HOST}/bin/nvidia-smi
