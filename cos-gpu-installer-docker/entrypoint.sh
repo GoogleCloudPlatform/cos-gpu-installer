@@ -27,7 +27,7 @@ TOOLCHAIN_URL_FILENAME="toolchain_url"
 CHROMIUMOS_SDK_GCS="https://storage.googleapis.com/chromiumos-sdk"
 ROOT_OS_RELEASE="${ROOT_OS_RELEASE:-/root/etc/os-release}"
 KERNEL_SRC_DIR="${KERNEL_SRC_DIR:-/build/usr/src/linux}"
-NVIDIA_DRIVER_VERSION="${NVIDIA_DRIVER_VERSION:-390.46}"
+NVIDIA_DRIVER_VERSION="${NVIDIA_DRIVER_VERSION:-396.26}"
 NVIDIA_DRIVER_MD5SUM="${NVIDIA_DRIVER_MD5SUM:-}"
 NVIDIA_INSTALL_DIR_HOST="${NVIDIA_INSTALL_DIR_HOST:-/var/lib/nvidia}"
 NVIDIA_INSTALL_DIR_CONTAINER="${NVIDIA_INSTALL_DIR_CONTAINER:-/usr/local/nvidia}"
@@ -279,7 +279,14 @@ installer_default_download_url() {
   location_mapping=( ["us"]="us" ["asia"]="asia" ["europe"]="eu" )
   # Use us as default download location.
   local -r download_location="${location_mapping[${instance_location}]:-us}"
-  echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/TESLA/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
+
+  if (( $(major_version "${NVIDIA_DRIVER_VERSION}") == 390 )); then
+    # The naming format changed after version 390.
+    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/TESLA/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
+  else
+    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}-diagnostic.run"
+  fi
+
 }
 
 get_nvidia_installer_url() {
