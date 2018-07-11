@@ -20,10 +20,10 @@ steps:
   args:
   - 'build'
   - '-t'
-  - 'gcr.io/${PROJECT_ID}/cos-gpu-installer:latest'
+  - 'gcr.io/${_PROJECT_ID}/cos-gpu-installer:latest'
   - '-t'
-  - 'gcr.io/${PROJECT_ID}/cos-gpu-installer:${TAG_NAME}'
+  - 'gcr.io/${_PROJECT_ID}/cos-gpu-installer:${TAG_NAME}'
   - 'cos-gpu-installer-docker/'
 images:
-- 'gcr.io/${PROJECT_ID}/cos-gpu-installer:latest'
-- 'gcr.io/${PROJECT_ID}/cos-gpu-installer:${TAG_NAME}'
+- 'gcr.io/${_PROJECT_ID}/cos-gpu-installer:latest'
+- 'gcr.io/${_PROJECT_ID}/cos-gpu-installer:${TAG_NAME}'
