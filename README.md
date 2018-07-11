@@ -26,3 +26,13 @@ which is implemented in this repository.
 The GPU driver version and container image version are specified in
 scripts/gpu-installer-env. You can edit the file if you want to install
 GPU driver version or use container image other than the default.
+
+## Release
+
+Releases follow the naming pattern 'vYYYYMMDD' and are based on Git tags that
+have the same name. Whenever a new release is published, a new container image
+will be pushed to gcr.io/cos-cloud/cos-gpu-installer. It will use
+container_build_request.yaml to build the image.
+
+The container images in gcr.io/cos-cloud/cos-gpu-installer have the same tag
+as the releases. Besides, the latest image will have a 'latest' tag.
