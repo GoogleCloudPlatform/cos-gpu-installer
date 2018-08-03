@@ -264,6 +264,10 @@ major_version() {
   echo "$1" | cut -d "." -f 1
 }
 
+minor_version() {
+  echo "$1" | cut -d "." -f 2
+}
+
 installer_default_download_url() {
   if (( $(major_version "${NVIDIA_DRIVER_VERSION}") < 390 )); then
     # Versions prior to 390 are downloaded from the upstream location.
@@ -283,6 +287,9 @@ installer_default_download_url() {
   if (( $(major_version "${NVIDIA_DRIVER_VERSION}") == 390 )); then
     # The naming format changed after version 390.
     echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/TESLA/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
+  elif (( $(major_version "${NVIDIA_DRIVER_VERSION}") >= 396 )) && (( $(minor_version "${NVIDIA_DRIVER_VERSION}") >= 37 )); then
+    # Apparently the naming format changed again starting since 396.37.
+    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
   else
     echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}-diagnostic.run"
   fi
