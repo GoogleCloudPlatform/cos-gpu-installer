@@ -33,6 +33,8 @@ NVIDIA_INSTALL_DIR_HOST="${NVIDIA_INSTALL_DIR_HOST:-/var/lib/nvidia}"
 NVIDIA_INSTALL_DIR_CONTAINER="${NVIDIA_INSTALL_DIR_CONTAINER:-/usr/local/nvidia}"
 ROOT_MOUNT_DIR="${ROOT_MOUNT_DIR:-/root}"
 CACHE_FILE="${NVIDIA_INSTALL_DIR_CONTAINER}/.cache"
+LOCK_FILE="${ROOT_MOUNT_DIR}/tmp/cos_gpu_installer_lock"
+LOCK_FILE_FD=20
 set +x
 
 RETCODE_SUCCESS=0
@@ -55,6 +57,15 @@ warn() {
 
 error() {
   _log "ERROR   " "$*"
+}
+
+lock() {
+  info "Checking if this is the only cos-gpu-installer that is running."
+  eval "exec ${LOCK_FILE_FD}>${LOCK_FILE}"
+  if ! flock -ne ${LOCK_FILE_FD}; then
+    error "File ${LOCK_FILE} is locked. Other cos-gpu-installer container might be running."
+    exit ${RETCODE_ERROR}
+  fi
 }
 
 load_etc_os_release() {
@@ -370,6 +381,7 @@ update_host_ld_cache() {
 }
 
 main() {
+  lock
   load_etc_os_release
   configure_kernel_module_locking
   if check_cached_version; then
