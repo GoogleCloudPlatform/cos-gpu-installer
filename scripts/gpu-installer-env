@@ -1,8 +1,8 @@
 # Change or Uncomment following variables if you need to install
 # a different gpu driver version, install to different location, etc.
 
-NVIDIA_DRIVER_VERSION=396.26
-NVIDIA_DRIVER_MD5SUM=4c4b23467495338ef2612769ebeadb3d
+NVIDIA_DRIVER_VERSION=410.72
+NVIDIA_DRIVER_MD5SUM=6d05e43e2dbdaa6339cffd38952f78ff
 # COS_NVIDIA_INSTALLER_CONTAINER=gcr.io/cos-cloud/cos-gpu-installer:latest
 # NVIDIA_INSTALL_DIR_HOST=/var/lib/nvidia
 # NVIDIA_INSTALL_DIR_CONTAINER=/usr/local/nvidia

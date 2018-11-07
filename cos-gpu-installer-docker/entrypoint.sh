@@ -232,6 +232,9 @@ configure_kernel_src() {
     sed -i "s|${kernel_version_src}|${kernel_version_uname}|g" "include/generated/utsrelease.h"
   fi
   popd
+
+  # COS doesn't enable module versioning, disable Module.symvers file check.
+  export IGNORE_MISSING_MODULE_SYMVERS=1
 }
 
 configure_nvidia_installation_dirs() {
