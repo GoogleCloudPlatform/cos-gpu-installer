@@ -283,30 +283,30 @@ minor_version() {
 }
 
 installer_default_download_url() {
-  if (( $(major_version "${NVIDIA_DRIVER_VERSION}") < 390 )); then
-    # Versions prior to 390 are downloaded from the upstream location.
-    info "Downloading Nvidia installer from https://us.download.nvidia.com/... "
-    echo "https://us.download.nvidia.com/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
-    return
-  fi
+#  if (( $(major_version "${NVIDIA_DRIVER_VERSION}") < 390 )); then
+# Versions prior to 390 are downloaded from the upstream location.
+info "Downloading Nvidia installer from https://us.download.nvidia.com/... "
+echo "https://us.download.nvidia.com/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
+return
+#  fi
 
-  info "Downloading Nvidia installer from https://storage.googleapis.com/... "
-  # projects/000000000000/zones/us-west1-a -> us
-  local -r instance_location="$(curl -sfS "http://metadata.google.internal/computeMetadata/v1/instance/zone" -H "Metadata-Flavor: Google" | cut -d '/' -f4 | cut -d '-' -f1)"
-  declare -A location_mapping
-  location_mapping=( ["us"]="us" ["asia"]="asia" ["europe"]="eu" )
-  # Use us as default download location.
-  local -r download_location="${location_mapping[${instance_location}]:-us}"
-
-  if (( $(major_version "${NVIDIA_DRIVER_VERSION}") == 390 )); then
-    # The naming format changed after version 390.
-    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/TESLA/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
-  elif (( $(major_version "${NVIDIA_DRIVER_VERSION}") >= 396 )) && (( $(minor_version "${NVIDIA_DRIVER_VERSION}") >= 37 )); then
-    # Apparently the naming format changed again starting since 396.37.
-    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
-  else
-    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}-diagnostic.run"
-  fi
+#  info "Downloading Nvidia installer from https://storage.googleapis.com/... "
+#  # projects/000000000000/zones/us-west1-a -> us
+#  local -r instance_location="$(curl -sfS "http://metadata.google.internal/computeMetadata/v1/instance/zone" -H "Metadata-Flavor: Google" | cut -d '/' -f4 | cut -d '-' -f1)"
+#  declare -A location_mapping
+#  location_mapping=( ["us"]="us" ["asia"]="asia" ["europe"]="eu" )
+#  # Use us as default download location.
+#  local -r download_location="${location_mapping[${instance_location}]:-us}"
+#
+#  if (( $(major_version "${NVIDIA_DRIVER_VERSION}") == 390 )); then
+#    # The naming format changed after version 390.
+#    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/TESLA/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
+#  elif (( $(major_version "${NVIDIA_DRIVER_VERSION}") >= 396 )) && (( $(minor_version "${NVIDIA_DRIVER_VERSION}") >= 37 )); then
+#    # Apparently the naming format changed again starting since 396.37.
+#    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run"
+#  else
+#    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${NVIDIA_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}-diagnostic.run"
+#  fi
 
 }
 
