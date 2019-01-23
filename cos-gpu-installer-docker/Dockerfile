@@ -17,6 +17,10 @@
 FROM debian:9
 LABEL maintainer="cos-containers@google.com"
 
+RUN apt-get update -yqq \
+    && apt-get install -yqq unattended-upgrades \
+    && unattended-upgrade -v
+
 # Install minimal tools needed to build kernel modules.
 RUN apt-get update -qq && \
     apt-get install -y xz-utils python2.7-minimal kmod git make bc curl ccache libc6-dev pciutils gcc libelf-dev libssl-dev && \
