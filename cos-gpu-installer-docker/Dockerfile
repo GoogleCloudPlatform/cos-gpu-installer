@@ -26,5 +26,6 @@ RUN apt-get update -qq && \
 RUN cd /usr/bin && ln -s python2.7 python && ln -s python2.7 python2
 
 COPY README.container /README
+COPY gpu_installer_url_lib.sh /gpu_installer_url_lib.sh
 COPY entrypoint.sh /entrypoint.sh
 CMD /entrypoint.sh
