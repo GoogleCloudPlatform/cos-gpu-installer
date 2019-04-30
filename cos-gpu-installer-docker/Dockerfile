@@ -14,7 +14,7 @@
 #
 # Dockerfile for the COS Module Builder container.
 
-FROM debian:9
+FROM marketplace.gcr.io/google/debian9
 LABEL maintainer="cos-containers@google.com"
 
 RUN apt-get update -yqq \
