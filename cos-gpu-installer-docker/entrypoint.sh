@@ -214,7 +214,12 @@ install_cross_toolchain_pkg() {
   info "Configuring environment variables for cross-compilation"
   export PATH="/build/bin:${PATH}"
   export SYSROOT="/build/usr/x86_64-cros-linux-gnu"
-  export CC="x86_64-cros-linux-gnu-gcc"
+  local kernel_version="$(uname -r | grep -o "^[0-9]*\.[0-9]*" | head -1)"
+  if [[ "${kernel_version}" = 4.14 ]]; then
+    export CC="x86_64-cros-linux-gnu-gcc"
+  else
+    export CC="x86_64-cros-linux-gnu-clang"
+  fi
 }
 
 configure_kernel_src() {

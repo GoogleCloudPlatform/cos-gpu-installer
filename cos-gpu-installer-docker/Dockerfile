@@ -19,11 +19,8 @@ LABEL maintainer="cos-containers@google.com"
 
 # Install minimal tools needed to build kernel modules.
 RUN apt-get update -qq && \
-    apt-get install -y xz-utils python2.7-minimal kmod git make bc curl ccache libc6-dev pciutils gcc libelf-dev libssl-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-# Download & install prebuild COS toolchain package, and prepare the environment for cross-compiling.
-RUN cd /usr/bin && ln -s python2.7 python && ln -s python2.7 python2
+    apt-get install -y xz-utils python2.7-minimal kmod git make bc curl ccache libc6-dev pciutils \
+	gcc libelf-dev libssl-dev clang bison flex && rm -rf /var/lib/apt/lists/*
 
 COPY README.container /README
 COPY entrypoint.sh /entrypoint.sh
