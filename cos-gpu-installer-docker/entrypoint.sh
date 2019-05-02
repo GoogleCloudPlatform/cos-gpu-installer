@@ -215,7 +215,8 @@ install_cross_toolchain_pkg() {
   export PATH="/build/bin:${PATH}"
   export SYSROOT="/build/usr/x86_64-cros-linux-gnu"
   local kernel_version="$(uname -r | grep -o "^[0-9]*\.[0-9]*" | head -1)"
-  if [[ "${kernel_version}" = 4.14 ]]; then
+  # COS kernel will be compiled using clang from kernel-4.19
+  if [[ "${kernel_version}" = 4.4 || "${kernel_version}" = 4.14 ]]; then
     export CC="x86_64-cros-linux-gnu-gcc"
   else
     export CC="x86_64-cros-linux-gnu-clang"
