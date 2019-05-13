@@ -24,6 +24,7 @@ COS_DOWNLOAD_GCS="https://storage.googleapis.com/cos-tools"
 COS_KERNEL_SRC_GIT="https://chromium.googlesource.com/chromiumos/third_party/kernel"
 COS_KERNEL_SRC_ARCHIVE="kernel-src.tar.gz"
 TOOLCHAIN_URL_FILENAME="toolchain_url"
+TOOLCHAIN_INFO_FILENAME="toolchain_info"
 CHROMIUMOS_SDK_GCS="https://storage.googleapis.com/chromiumos-sdk"
 ROOT_OS_RELEASE="${ROOT_OS_RELEASE:-/root/etc/os-release}"
 KERNEL_SRC_DIR="${KERNEL_SRC_DIR:-/build/usr/src/linux}"
@@ -36,6 +37,9 @@ CACHE_FILE="${NVIDIA_INSTALL_DIR_CONTAINER}/.cache"
 LOCK_FILE="${ROOT_MOUNT_DIR}/tmp/cos_gpu_installer_lock"
 LOCK_FILE_FD=20
 set +x
+
+CC=""
+CXX=""
 
 RETCODE_SUCCESS=0
 RETCODE_ERROR=1
@@ -214,15 +218,39 @@ install_cross_toolchain_pkg() {
   info "Configuring environment variables for cross-compilation"
   export PATH="/build/bin:${PATH}"
   export SYSROOT="/build/usr/x86_64-cros-linux-gnu"
-  export CC="x86_64-cros-linux-gnu-gcc"
+}
+
+set_compilation_env() {
+  # Get toolchain_info path in COS GCS bucket
+  local -r tc_info_file_path="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_INFO_FILENAME}"
+  info "Obtaining toolchain_info file from ${tc_info_file_path}"
+  local -r download_url="$(curl -sfS "${tc_info_file_path}")"
+
+  # try to download toolchain_info if present
+  local attempts=0
+  until time curl -sfS "${download_url}" -o "${TOOLCHAIN_INFO_FILENAME}"; do
+    attempts=$(( ${attempts} + 1 ))
+    if (( "${attempts}" >= "${RETRY_COUNT}" )); then
+      # Required to support COS builds not having toolchain_info file
+      CC="x86_64-cros-linux-gnu-gcc"
+      CXX="x86_64-cros-linux-gnu-g++"
+      return
+    fi
+    warn "Error fetching toolchain_info file from ${download_url}, retrying"
+    sleep 1
+  done
+
+  # toolchain_info file will set 'CC' and 'CXX' environment variable
+  # based on the compiler used for kernel compilation
+  source "${TOOLCHAIN_INFO_FILENAME}"
 }
 
 configure_kernel_src() {
   info "Configuring kernel sources"
   pushd "${KERNEL_SRC_DIR}"
   zcat /proc/config.gz > .config
-  make olddefconfig
-  make modules_prepare
+  make 'CC='"${CC}" 'CXX='"${CXX}" olddefconfig
+  make 'CC='"${CC}" 'CXX='"${CXX}" modules_prepare
 
   # TODO: Figure out why the kernel magic version hack is required.
   local kernel_version_uname="$(uname -r)"
@@ -395,6 +423,7 @@ main() {
     info "Did not find cached version, building the drivers..."
     download_kernel_src
     install_cross_toolchain_pkg
+    set_compilation_env
     configure_nvidia_installation_dirs
     download_nvidia_installer
     configure_kernel_src
