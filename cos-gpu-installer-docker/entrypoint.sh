@@ -39,6 +39,8 @@ LOCK_FILE="${ROOT_MOUNT_DIR}/tmp/cos_gpu_installer_lock"
 LOCK_FILE_FD=20
 set +x
 
+TOOLCHAIN_DOWNLOAD_URL=""
+
 # Compilation environment variables
 CC=""
 CXX=""
@@ -187,6 +189,31 @@ download_kernel_src() {
   popd
 }
 
+# Download content from a given URL to specific location.
+#
+# Args:
+# download_url: The URL used to download the archive/file.
+# output_name: Output name of the downloaded archive/file.
+# info_str: Describes the archive/file that is downloaded.
+download_content_from_url() {
+  local -r download_url=$1
+  local -r output_name=$2
+  local -r info_str=$3
+
+  local attempts=0
+  until time curl -sfS "${download_url}" -o "${output_name}"; do
+    attempts=$(( ${attempts} + 1 ))
+    if (( "${attempts}" >= "${RETRY_COUNT}" )); then
+      error "Could not download ${info_str} from ${download_url}, giving up."
+	  break
+    fi
+    warn "Error fetching ${info_str} from ${download_url}, retrying"
+    sleep 1
+  done
+}
+
+# Get the toolchain from Chromiumos GCS bucket when
+# toolchain tarball is not found in COS GCS bucket.
 get_cross_toolchain_pkg() {
   # First, check if the toolchain path is available locally.
   local -r tc_path_file="${ROOT_MOUNT_DIR}/etc/toolchain-path"
@@ -203,24 +230,23 @@ get_cross_toolchain_pkg() {
   echo "${download_url}"
 }
 
+# Download, extracts and install the toolchain package
 install_cross_toolchain_pkg() {
   mkdir -p /build
   pushd /build
 
-  local -r download_url=$1
-  info "Downloading toolchain from ${download_url}"
+  info "Downloading toolchain from ${TOOLCHAIN_DOWNLOAD_URL}"
   # Next, download and extract the toolchain tarball.
-  local -r pkg_name="$(basename "${download_url}")"
-  local attempts=0
-  until time curl -sfS "${download_url}" -o "${pkg_name}"; do
-    attempts=$(( ${attempts} + 1 ))
-    if (( "${attempts}" >= "${RETRY_COUNT}" )); then
-      error "Could not download toolchain from ${download_url}, giving up."
-      return ${RETCODE_ERROR}
-    fi
-    warn "Error fetching toolchain archive from ${download_url}, retrying"
-    sleep 1
-  done
+  local -r pkg_name="$(basename "${TOOLCHAIN_DOWNLOAD_URL}")"
+
+  # Download toolchain from download_url to pkg_name
+  download_content_from_url "${TOOLCHAIN_DOWNLOAD_URL}" "${pkg_name}" "toolchain archive"
+
+  # Failed to download the toolchain
+  if [[ ! -f "${pkg_name}" ]]; then
+     return ${RETCODE_ERROR}
+  fi
+
   tar xf "${pkg_name}"
   popd
   info "Configuring environment variables for cross-compilation"
@@ -228,47 +254,39 @@ install_cross_toolchain_pkg() {
   export SYSROOT="/build/usr/x86_64-cros-linux-gnu"
 }
 
+# Set-up compilation environment for compiling GPU drivers
+# using toolchain used for kernel compilation
 set_compilation_env() {
+  info "Setting up compilation environment"
   # Get toolchain_info path from COS GCS bucket
   local -r tc_info_file_path="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_INFO_FILENAME}"
   info "Obtaining toolchain_info file from ${tc_info_file_path}"
-  local -r download_tc_info_url="$(curl -sfS "${tc_info_file_path}")"
 
-  # try to download toolchain_info if present
-  local attempts=0
-  until time curl -sfS "${download_tc_info_url}" -o "${TOOLCHAIN_INFO_FILENAME}"; do
-    attempts=$(( ${attempts} + 1 ))
-    if (( "${attempts}" >= "${RETRY_COUNT}" )); then
-      # Not able to download toolchain_info file from COS GCS bucket
-      break
-    fi
-    warn "Error fetching toolchain_info file from ${download_tc_info_url}, retrying"
-    sleep 1
-  done
+  # Download toolchain_info if present
+  download_content_from_url "${tc_info_file_path}" "${TOOLCHAIN_INFO_FILENAME}" "toolchain_info file"
 
-  if [[ -s ${TOOLCHAIN_INFO_FILENAME} ]]; then
+  if [[ -s "${TOOLCHAIN_INFO_FILENAME}" ]]; then
     # toolchain_info file will set 'CC' and 'CXX' environment
     # variable based on the toolchain used for kernel compilation
     source "${TOOLCHAIN_INFO_FILENAME}"
     # Downloading toolchain from COS GCS Bucket
-    local -r download_tc_url="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_ARCHIVE}"
+    TOOLCHAIN_DOWNLOAD_URL="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_ARCHIVE}"
   else
     # Required to support COS builds not having toolchain_info file
-    local -r download_tc_url=$(get_cross_toolchain_pkg)
+    TOOLCHAIN_DOWNLOAD_URL=$(get_cross_toolchain_pkg)
     CC="x86_64-cros-linux-gnu-gcc"
     CXX="x86_64-cros-linux-gnu-g++"
   fi
   export CC
   export CXX
-  echo "${download_tc_url}"
 }
 
 configure_kernel_src() {
   info "Configuring kernel sources"
   pushd "${KERNEL_SRC_DIR}"
   zcat /proc/config.gz > .config
-  make 'CC='"${CC}" 'CXX='"${CXX}" olddefconfig
-  make 'CC='"${CC}" 'CXX='"${CXX}" modules_prepare
+  make CC="${CC}" CXX="${CXX}" olddefconfig
+  make CC="${CC}" CXX="${CXX}" modules_prepare
 
   # TODO: Figure out why the kernel magic version hack is required.
   local kernel_version_uname="$(uname -r)"
@@ -440,15 +458,14 @@ main() {
   else
     info "Did not find cached version, building the drivers..."
     download_kernel_src
-    local -r download_url=set_compilation_env
-    install_cross_toolchain_pkg "${download_url}"
+    set_compilation_env
+    install_cross_toolchain_pkg
     configure_nvidia_installation_dirs
     download_nvidia_installer
     configure_kernel_src
     run_nvidia_installer
     update_cached_version
     verify_nvidia_installation
-    info "Finished installing the drivers."
   fi
   update_host_ld_cache
 }
