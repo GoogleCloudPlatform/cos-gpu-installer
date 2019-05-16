@@ -248,9 +248,9 @@ set_compilation_env() {
 
   if [[ -s ${TOOLCHAIN_INFO_FILENAME} ]]; then
     # toolchain_info file will set 'CC' and 'CXX' environment
-	# variable based on the toolchain used for kernel compilation
+    # variable based on the toolchain used for kernel compilation
     source "${TOOLCHAIN_INFO_FILENAME}"
-	# Downloading toolchain from COS GCS Bucket
+    # Downloading toolchain from COS GCS Bucket
     local -r download_tc_url="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_ARCHIVE}"
   else
     # Required to support COS builds not having toolchain_info file
@@ -267,8 +267,8 @@ configure_kernel_src() {
   info "Configuring kernel sources"
   pushd "${KERNEL_SRC_DIR}"
   zcat /proc/config.gz > .config
-  make 'CC='"${CC}" 'CXX='"${CXX}" olddefconfig
-  make 'CC='"${CC}" 'CXX='"${CXX}" modules_prepare
+  make CC="${CC}" CXX="${CXX}" olddefconfig
+  make CC="${CC}" CXX="${CXX}" modules_prepare
 
   # TODO: Figure out why the kernel magic version hack is required.
   local kernel_version_uname="$(uname -r)"
