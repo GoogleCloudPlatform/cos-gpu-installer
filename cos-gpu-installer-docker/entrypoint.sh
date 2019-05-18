@@ -466,6 +466,7 @@ main() {
     run_nvidia_installer
     update_cached_version
     verify_nvidia_installation
+    info "Finished installing the drivers."
   fi
   update_host_ld_cache
 }
