@@ -39,6 +39,8 @@ LOCK_FILE="${ROOT_MOUNT_DIR}/tmp/cos_gpu_installer_lock"
 LOCK_FILE_FD=20
 set +x
 
+# TOOLCHAIN_DOWNLOAD_URL, CC and CXX are set by
+# set_compilation_env
 TOOLCHAIN_DOWNLOAD_URL=""
 
 # Compilation environment variables
@@ -205,7 +207,7 @@ download_content_from_url() {
     attempts=$(( ${attempts} + 1 ))
     if (( "${attempts}" >= "${RETRY_COUNT}" )); then
       error "Could not download ${info_str} from ${download_url}, giving up."
-	  break
+	  return 1
     fi
     warn "Error fetching ${info_str} from ${download_url}, retrying"
     sleep 1
@@ -236,14 +238,11 @@ install_cross_toolchain_pkg() {
   pushd /build
 
   info "Downloading toolchain from ${TOOLCHAIN_DOWNLOAD_URL}"
-  # Next, download and extract the toolchain tarball.
   local -r pkg_name="$(basename "${TOOLCHAIN_DOWNLOAD_URL}")"
 
   # Download toolchain from download_url to pkg_name
-  download_content_from_url "${TOOLCHAIN_DOWNLOAD_URL}" "${pkg_name}" "toolchain archive"
-
-  # Failed to download the toolchain
-  if [[ ! -f "${pkg_name}" ]]; then
+  if download_content_from_url "${TOOLCHAIN_DOWNLOAD_URL}" "${pkg_name}" "toolchain archive"; then
+     # Failed to download the toolchain
      return ${RETCODE_ERROR}
   fi
 
@@ -263,9 +262,8 @@ set_compilation_env() {
   info "Obtaining toolchain_info file from ${tc_info_file_path}"
 
   # Download toolchain_info if present
-  download_content_from_url "${tc_info_file_path}" "${TOOLCHAIN_INFO_FILENAME}" "toolchain_info file"
-
-  if [[ -s "${TOOLCHAIN_INFO_FILENAME}" ]]; then
+  if ! download_content_from_url "${tc_info_file_path}" "${TOOLCHAIN_INFO_FILENAME}" "toolchain_info file"; then
+    # Successful download of toolchain_info file
     # toolchain_info file will set 'CC' and 'CXX' environment
     # variable based on the toolchain used for kernel compilation
     source "${TOOLCHAIN_INFO_FILENAME}"
@@ -277,6 +275,7 @@ set_compilation_env() {
     CC="x86_64-cros-linux-gnu-gcc"
     CXX="x86_64-cros-linux-gnu-g++"
   fi
+
   export CC
   export CXX
 }
