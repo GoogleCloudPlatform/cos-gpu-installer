@@ -207,7 +207,7 @@ download_content_from_url() {
     attempts=$(( ${attempts} + 1 ))
     if (( "${attempts}" >= "${RETRY_COUNT}" )); then
       error "Could not download ${info_str} from ${download_url}, giving up."
-	  return 1
+      return 1
     fi
     warn "Error fetching ${info_str} from ${download_url}, retrying"
     sleep 1
