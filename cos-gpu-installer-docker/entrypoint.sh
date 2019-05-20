@@ -197,6 +197,8 @@ download_kernel_src() {
 # download_url: The URL used to download the archive/file.
 # output_name: Output name of the downloaded archive/file.
 # info_str: Describes the archive/file that is downloaded.
+# Returns:
+# 0 if successful; Otherwise 1.
 download_content_from_url() {
   local -r download_url=$1
   local -r output_name=$2
@@ -207,11 +209,12 @@ download_content_from_url() {
     attempts=$(( ${attempts} + 1 ))
     if (( "${attempts}" >= "${RETRY_COUNT}" )); then
       error "Could not download ${info_str} from ${download_url}, giving up."
-      return 1
+      return ${RETCODE_ERROR}
     fi
     warn "Error fetching ${info_str} from ${download_url}, retrying"
     sleep 1
   done
+  return ${RETCODE_SUCCESS}
 }
 
 # Get the toolchain from Chromiumos GCS bucket when
@@ -241,9 +244,9 @@ install_cross_toolchain_pkg() {
   local -r pkg_name="$(basename "${TOOLCHAIN_DOWNLOAD_URL}")"
 
   # Download toolchain from download_url to pkg_name
-  if download_content_from_url "${TOOLCHAIN_DOWNLOAD_URL}" "${pkg_name}" "toolchain archive"; then
-     # Failed to download the toolchain
-     return ${RETCODE_ERROR}
+  if ! download_content_from_url "${TOOLCHAIN_DOWNLOAD_URL}" "${pkg_name}" "toolchain archive"; then
+        # Failed to download the toolchain
+        return ${RETCODE_ERROR}
   fi
 
   tar xf "${pkg_name}"
@@ -263,17 +266,17 @@ set_compilation_env() {
 
   # Download toolchain_info if present
   if ! download_content_from_url "${tc_info_file_path}" "${TOOLCHAIN_INFO_FILENAME}" "toolchain_info file"; then
-    # Successful download of toolchain_info file
-    # toolchain_info file will set 'CC' and 'CXX' environment
-    # variable based on the toolchain used for kernel compilation
-    source "${TOOLCHAIN_INFO_FILENAME}"
-    # Downloading toolchain from COS GCS Bucket
-    TOOLCHAIN_DOWNLOAD_URL="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_ARCHIVE}"
+        # Required to support COS builds not having toolchain_info file
+        TOOLCHAIN_DOWNLOAD_URL=$(get_cross_toolchain_pkg)
+        CC="x86_64-cros-linux-gnu-gcc"
+        CXX="x86_64-cros-linux-gnu-g++"
   else
-    # Required to support COS builds not having toolchain_info file
-    TOOLCHAIN_DOWNLOAD_URL=$(get_cross_toolchain_pkg)
-    CC="x86_64-cros-linux-gnu-gcc"
-    CXX="x86_64-cros-linux-gnu-g++"
+        # Successful download of toolchain_info file
+        # toolchain_info file will set 'CC' and 'CXX' environment
+        # variable based on the toolchain used for kernel compilation
+        source "${TOOLCHAIN_INFO_FILENAME}"
+        # Downloading toolchain from COS GCS Bucket
+        TOOLCHAIN_DOWNLOAD_URL="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_ARCHIVE}"
   fi
 
   export CC
