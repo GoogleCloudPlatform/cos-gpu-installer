@@ -25,7 +25,7 @@ COS_KERNEL_SRC_GIT="https://chromium.googlesource.com/chromiumos/third_party/ker
 COS_KERNEL_SRC_ARCHIVE="kernel-src.tar.gz"
 TOOLCHAIN_URL_FILENAME="toolchain_url"
 TOOLCHAIN_ARCHIVE="toolchain.tar.xz"
-TOOLCHAIN_INFO_FILENAME="toolchain_info"
+TOOLCHAIN_ENV_FILENAME="toolchain_env"
 CHROMIUMOS_SDK_GCS="https://storage.googleapis.com/chromiumos-sdk"
 ROOT_OS_RELEASE="${ROOT_OS_RELEASE:-/root/etc/os-release}"
 KERNEL_SRC_DIR="${KERNEL_SRC_DIR:-/build/usr/src/linux}"
@@ -288,21 +288,21 @@ install_cross_toolchain_pkg() {
 # using toolchain used for kernel compilation
 set_compilation_env() {
   info "Setting up compilation environment"
-  # Get toolchain_info path from COS GCS bucket
-  local -r tc_info_file_path="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_INFO_FILENAME}"
-  info "Obtaining toolchain_info file from ${tc_info_file_path}"
+  # Get toolchain_env path from COS GCS bucket
+  local -r tc_info_file_path="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_ENV_FILENAME}"
+  info "Obtaining toolchain_env file from ${tc_info_file_path}"
 
-  # Download toolchain_info if present
-  if ! download_content_from_url "${tc_info_file_path}" "${TOOLCHAIN_INFO_FILENAME}" "toolchain_info file"; then
-        # Required to support COS builds not having toolchain_info file
+  # Download toolchain_env if present
+  if ! download_content_from_url "${tc_info_file_path}" "${TOOLCHAIN_ENV_FILENAME}" "toolchain_env file"; then
+        # Required to support COS builds not having toolchain_env file
         TOOLCHAIN_DOWNLOAD_URL=$(get_cross_toolchain_pkg)
         CC="x86_64-cros-linux-gnu-gcc"
         CXX="x86_64-cros-linux-gnu-g++"
   else
-        # Successful download of toolchain_info file
-        # toolchain_info file will set 'CC' and 'CXX' environment
+        # Successful download of toolchain_env file
+        # toolchain_env file will set 'CC' and 'CXX' environment
         # variable based on the toolchain used for kernel compilation
-        source "${TOOLCHAIN_INFO_FILENAME}"
+        source "${TOOLCHAIN_ENV_FILENAME}"
         # Downloading toolchain from COS GCS Bucket
         TOOLCHAIN_DOWNLOAD_URL="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_ARCHIVE}"
   fi
