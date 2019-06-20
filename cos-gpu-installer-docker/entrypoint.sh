@@ -26,6 +26,7 @@ COS_KERNEL_SRC_ARCHIVE="kernel-src.tar.gz"
 TOOLCHAIN_URL_FILENAME="toolchain_url"
 TOOLCHAIN_ARCHIVE="toolchain.tar.xz"
 TOOLCHAIN_ENV_FILENAME="toolchain_env"
+TOOLCHAIN_PKG_DIR="${TOOLCHAIN_PKG_DIR:-/build/cos-tools}"
 CHROMIUMOS_SDK_GCS="https://storage.googleapis.com/chromiumos-sdk"
 ROOT_OS_RELEASE="${ROOT_OS_RELEASE:-/root/etc/os-release}"
 KERNEL_SRC_DIR="${KERNEL_SRC_DIR:-/build/usr/src/linux}"
@@ -53,6 +54,9 @@ RETRY_COUNT=${RETRY_COUNT:-5}
 
 # GPU installer filename. Expect to be set by download_nvidia_installer().
 INSTALLER_FILE=""
+
+# Preload driver independent components. Set in parse_opt()
+PRELOAD="${PRELOAD:-false}"
 
 source gpu_installer_url_lib.sh
 
@@ -213,10 +217,10 @@ download_kernel_src() {
     if ! download_kernel_src_from_gcs && ! download_kernel_src_from_git_repo; then
         return ${RETCODE_ERROR}
     fi
+    pushd "${KERNEL_SRC_DIR}"
+    tar xf "${COS_KERNEL_SRC_ARCHIVE}"
+    popd
   fi
-  pushd "${KERNEL_SRC_DIR}"
-  tar xf "${COS_KERNEL_SRC_ARCHIVE}"
-  popd
 }
 
 # Download content from a given URL to specific location.
@@ -265,23 +269,29 @@ get_cross_toolchain_pkg() {
 
 # Download, extracts and install the toolchain package
 install_cross_toolchain_pkg() {
-  mkdir -p /build
-  pushd /build
-
-  info "Downloading toolchain from ${TOOLCHAIN_DOWNLOAD_URL}"
-  local -r pkg_name="$(basename "${TOOLCHAIN_DOWNLOAD_URL}")"
-
-  # Download toolchain from download_url to pkg_name
-  if ! download_content_from_url "${TOOLCHAIN_DOWNLOAD_URL}" "${pkg_name}" "toolchain archive"; then
-        # Failed to download the toolchain
-        return ${RETCODE_ERROR}
+  info "$TOOLCHAIN_PKG_DIR: $(ls -A "${TOOLCHAIN_PKG_DIR}")"
+  if [[ ! -z "$(ls -A "${TOOLCHAIN_PKG_DIR}")" ]]; then
+    info "Found existing toolchain package. Skipping download and installation"
+  else
+    mkdir -p "${TOOLCHAIN_PKG_DIR}"
+    pushd "${TOOLCHAIN_PKG_DIR}"
+    
+    info "Downloading toolchain from ${TOOLCHAIN_DOWNLOAD_URL}"
+    
+    # Download toolchain from download_url to pkg_name
+    local -r pkg_name="$(basename "${TOOLCHAIN_DOWNLOAD_URL}")"
+    if ! download_content_from_url "${TOOLCHAIN_DOWNLOAD_URL}" "${pkg_name}" "toolchain archive"; then
+      # Failed to download the toolchain
+      return ${RETCODE_ERROR}
+    fi
+    
+    tar xf "${pkg_name}"
+    popd
   fi
-
-  tar xf "${pkg_name}"
-  popd
+  
   info "Configuring environment variables for cross-compilation"
-  export PATH="/build/bin:${PATH}"
-  export SYSROOT="/build/usr/x86_64-cros-linux-gnu"
+  export PATH="${TOOLCHAIN_PKG_DIR}/bin:${PATH}"
+  export SYSROOT="${TOOLCHAIN_PKG_DIR}/usr/x86_64-cros-linux-gnu"
 }
 
 # Set-up compilation environment for compiling GPU drivers
@@ -427,28 +437,63 @@ update_host_ld_cache() {
   ldconfig -r "${ROOT_MOUNT_DIR}"
 }
 
+usage() {
+  echo "usage: $0 [-p]"
+  echo "Default behavior installs all components needed for the Nvidia driver."
+  echo "  -p: Install cross toolchain package and kernel source only."
+}
+
+parse_opt() {
+  while getopts ":ph" opt; do
+  case ${opt} in
+    p)
+      PRELOAD="true"
+      ;;
+    h)
+      usage
+      exit 0
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      usage
+      exit 1
+      ;;
+  esac
+  done
+}
+
 main() {
-  lock
-  load_etc_os_release
-  configure_kernel_module_locking
-  if check_cached_version; then
-    configure_cached_installation
-    verify_nvidia_installation
-    info "Found cached version, NOT building the drivers."
-  else
-    info "Did not find cached version, building the drivers..."
-    download_nvidia_installer
-    download_kernel_src
+  parse_opt "$@"
+  info "PRELOAD: ${PRELOAD}"
+  if [[ "$PRELOAD" == "true" ]]; then
+    load_etc_os_release
     set_compilation_env
     install_cross_toolchain_pkg
-    configure_nvidia_installation_dirs
-    configure_kernel_src
-    run_nvidia_installer
-    update_cached_version
-    verify_nvidia_installation
-    info "Finished installing the drivers."
+    download_kernel_src
+    info "Finished installing the cross toolchain package and kernel source."
+  else
+    lock
+    load_etc_os_release
+    configure_kernel_module_locking
+    if check_cached_version; then
+      configure_cached_installation
+      verify_nvidia_installation
+      info "Found cached version, NOT building the drivers."
+    else
+      info "Did not find cached version, building the drivers..."
+      download_nvidia_installer
+      download_kernel_src
+      set_compilation_env
+      install_cross_toolchain_pkg
+      configure_nvidia_installation_dirs
+      configure_kernel_src
+      run_nvidia_installer
+      update_cached_version
+      verify_nvidia_installation
+      info "Finished installing the drivers."
+    fi
+    update_host_ld_cache
   fi
-  update_host_ld_cache
 }
 
 main "$@"
