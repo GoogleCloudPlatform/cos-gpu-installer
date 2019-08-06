@@ -96,29 +96,52 @@ load_etc_os_release() {
   info "Running on COS build id ${BUILD_ID}"
 }
 
+reboot_machine() {
+  warn "Rebooting"
+  echo b > /proc/sysrq-trigger
+}
+
 configure_kernel_module_locking() {
   info "Checking if third party kernel modules can be installed"
-  local -r kernel_cmdline="$(cat /proc/cmdline)"
-  # Assume that kernel commandline will never contain "lsm.module_locking=1",
-  # which is the default value when unspecified.
-  if echo "${kernel_cmdline}" | grep -q -v "lsm.module_locking=0"; then
-    local -r esp_partition="/dev/sda12"
-    local -r mount_path="/tmp/esp"
-    local -r grub_cfg="efi/boot/grub.cfg"
+  local -r esp_partition="/dev/sda12"
+  local -r mount_path="/tmp/esp"
+  local -r grub_cfg="efi/boot/grub.cfg"
+  local sed_cmds=()
 
-    mkdir -p "${mount_path}"
-    mount "${esp_partition}" "${mount_path}"
+  mkdir -p "${mount_path}"
+  mount "${esp_partition}" "${mount_path}"
+  pushd "${mount_path}"
 
-    pushd "${mount_path}"
-    cp "${grub_cfg}" "${grub_cfg}.orig"
-    sed 's/cros_efi/cros_efi lsm.module_locking=0 loadpin.enabled=0/g' \
-      -i "efi/boot/grub.cfg"
-    popd
-    sync
-    umount "${mount_path}"
-    warn "Rebooting"
-    echo b > /proc/sysrq-trigger
+  # Disable kernel module signature verification.
+  if grep -q "module.sig_enforce" /proc/cmdline; then
+    if grep -q "module.sig_enforce=1" /proc/cmdline; then
+      sed_cmds+=('s/module.sig_enforce=1/module.sig_enforce=0/g')
+    fi
+  else
+    sed_cmds+=('s/cros_efi/cros_efi module.sig_enforce=0/g')
+  fi;
+
+  # Disable loadpin.
+  if grep -q "loadpin.enabled" /proc/cmdline; then
+    if grep -q "loadpin.enabled=1" /proc/cmdline; then
+      sed_cmds+=('s/loadpin.enabled=1/loadpin.enabled=0/g')
+    fi
+  else
+    sed_cmds+=('s/cros_efi/cros_efi loadpin.enabled=0/g')
   fi
+
+  if [ "${#sed_cmds[@]}" -gt 0 ]; then
+      cp "${grub_cfg}" "${grub_cfg}.orig"
+      for sed_cmd in "${sed_cmds[@]}"; do
+        sed "${sed_cmd}" -i "${grub_cfg}"
+      done
+      # Reboot to make the new kernel cmdline to be effective.
+      trap reboot_machine RETURN
+  fi
+
+  popd
+  sync
+  umount "${mount_path}"
 }
 
 check_cached_version() {
