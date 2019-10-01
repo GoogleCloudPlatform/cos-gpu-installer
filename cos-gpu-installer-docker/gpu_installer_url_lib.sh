@@ -1,4 +1,21 @@
 #!/bin/bash
+#
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+source driver_signature_lib.sh
 
 GPU_INSTALLER_DOWNLOAD_URL=""
 
@@ -54,7 +71,10 @@ get_gpu_installer_url() {
   if [[ -z "${GPU_INSTALLER_DOWNLOAD_URL}" ]]; then
     # First try to find the precompiled gpu installer.
     local -r url="$(precompiled_installer_download_url "$@")"
-    if curl -s -I "${url}"  2>&1 | grep -q 'HTTP/2 200'; then
+    # Only download pre-compiled driver if both installer and the corresponding
+    # signature exist.
+    if curl -s -I "${url}"  2>&1 | grep -q 'HTTP/2 200' && \
+      has_precompiled_driver_signature; then
       GPU_INSTALLER_DOWNLOAD_URL="${url}"
     else
       # Fallback to default gpu installer.

@@ -59,6 +59,7 @@ INSTALLER_FILE=""
 PRELOAD="${PRELOAD:-false}"
 
 source gpu_installer_url_lib.sh
+source driver_signature_lib.sh
 
 _log() {
   local -r prefix="$1"
@@ -169,6 +170,7 @@ update_cached_version() {
   cat >"${CACHE_FILE}"<<__EOF__
 CACHE_BUILD_ID=${BUILD_ID}
 CACHE_NVIDIA_DRIVER_VERSION=${NVIDIA_DRIVER_VERSION}
+CACHE_DRIVER_SIGNED=$(has_driver_signature && echo true || echo false)
 __EOF__
 
   info "Updated cached version as:"
@@ -184,66 +186,57 @@ update_container_ld_cache() {
 download_nvidia_installer() {
   info "Downloading GPU installer ... "
   pushd "${NVIDIA_INSTALL_DIR_CONTAINER}"
-  local -r gpu_installer_download_url="$(get_gpu_installer_url ${NVIDIA_DRIVER_VERSION} ${VERSION_ID} ${BUILD_ID})"
+  local gpu_installer_download_url
+  gpu_installer_download_url="$(get_gpu_installer_url "${NVIDIA_DRIVER_VERSION}" "${VERSION_ID}" "${BUILD_ID}")"
   info "Downloading from ${gpu_installer_download_url}"
-  INSTALLER_FILE="$(basename ${gpu_installer_download_url})"
-  curl -L -sS "${gpu_installer_download_url}" -o "${INSTALLER_FILE}"
+  INSTALLER_FILE="$(basename "${gpu_installer_download_url}")"
+  download_content_from_url "${gpu_installer_download_url}" "${INSTALLER_FILE}" "GPU installer"
   if [ ! -z "${NVIDIA_DRIVER_MD5SUM}" ]; then
     echo "${NVIDIA_DRIVER_MD5SUM}" "${INSTALLER_FILE}" | md5sum --check
   fi
   popd
 }
 
-is_precompiled_installer() {
-  # Helper function to decide whether the gpu installer is pre-compiled.
-  [[ "${INSTALLER_FILE##*.}" == "cos" ]] || return $?
-}
-
-download_kernel_src_archive() {
-  local -r download_url="$1"
-  info "Kernel source archive download URL: ${download_url}"
-  mkdir -p "${KERNEL_SRC_DIR}"
-  pushd "${KERNEL_SRC_DIR}"
-  local attempts=0
-  until time curl -sfS "${download_url}" -o "${COS_KERNEL_SRC_ARCHIVE}"; do
-    attempts=$(( ${attempts} + 1 ))
-    if (( "${attempts}" >= "${RETRY_COUNT}" )); then
-      error "Could not download kernel sources from ${download_url}, giving up."
-      return ${RETCODE_ERROR}
-    fi
-    warn "Error fetching kernel source archive from ${download_url}, retrying"
-    sleep 1
-  done
-  popd
+is_precompiled_driver() {
+  # Helper function to decide whether the gpu drvier is pre-compiled.
+  # A gpu driver is pre-compiled if it has a cos specific installer and
+  # the corresponding driver signature exists.
+  [[ "${INSTALLER_FILE##*.}" == "cos" ]] && has_precompiled_driver_signature || return $?
 }
 
 download_kernel_src_from_gcs() {
   local -r download_url="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${COS_KERNEL_SRC_ARCHIVE}"
-  download_kernel_src_archive "${download_url}"
+  download_content_from_url "${download_url}" "${COS_KERNEL_SRC_ARCHIVE}" "kernel sources"
 }
 
 download_kernel_src_from_git_repo() {
   # KERNEL_COMMIT_ID comes from /root/etc/os-release file.
   local -r download_url="${COS_KERNEL_SRC_GIT}/+archive/${KERNEL_COMMIT_ID}.tar.gz"
-  download_kernel_src_archive "${download_url}"
+  download_content_from_url "${download_url}" "${COS_KERNEL_SRC_ARCHIVE}" "kernel sources"
 }
 
 download_kernel_src() {
-  if is_precompiled_installer; then
-    info "Found pre-compiled installer, skip downloading kernel sources"
-    return
-  fi
-
   if [[ -z "$(ls -A "${KERNEL_SRC_DIR}")" ]]; then
     info "Kernel sources not found locally, downloading"
     mkdir -p "${KERNEL_SRC_DIR}"
+    pushd "${KERNEL_SRC_DIR}"
     if ! download_kernel_src_from_gcs && ! download_kernel_src_from_git_repo; then
+        popd
         return ${RETCODE_ERROR}
     fi
-    pushd "${KERNEL_SRC_DIR}"
     tar xf "${COS_KERNEL_SRC_ARCHIVE}"
     popd
   fi
+}
+
+# Gets default service account credentials of the VM which cos-gpu-installer runs in.
+# These credentials are needed to access GCS buckets.
+get_default_vm_credentials() {
+  local -r creds="$(/"${ROOT_MOUNT_DIR}"/usr/share/google/get_metadata_value \
+    service-accounts/default/token)"
+  local -r token=$(echo "${creds}" | python -c \
+    'import sys; import json; print(json.loads(sys.stdin.read())["access_token"])')
+  echo "${token}"
 }
 
 # Download content from a given URL to specific location.
@@ -258,10 +251,22 @@ download_content_from_url() {
   local -r download_url=$1
   local -r output_name=$2
   local -r info_str=$3
+  local -r auth_header="Authorization: Bearer $(get_default_vm_credentials)"
+
+  info "Downloading ${info_str} from ${download_url}"
+
+  local args=(
+    -sfS
+    "${download_url}"
+    -o "${output_name}"
+  )
+  if [[ "${download_url}" == "https://storage.googleapis.com"* ]]; then
+    args+=(-H "${auth_header}")
+  fi
 
   local attempts=0
-  until time curl -sfS "${download_url}" -o "${output_name}"; do
-    attempts=$(( ${attempts} + 1 ))
+  until time curl "${args[@]}"; do
+    attempts=$(( attempts + 1 ))
     if (( "${attempts}" >= "${RETRY_COUNT}" )); then
       error "Could not download ${info_str} from ${download_url}, giving up."
       return ${RETCODE_ERROR}
@@ -298,16 +303,16 @@ install_cross_toolchain_pkg() {
   else
     mkdir -p "${TOOLCHAIN_PKG_DIR}"
     pushd "${TOOLCHAIN_PKG_DIR}"
-    
+
     info "Downloading toolchain from ${TOOLCHAIN_DOWNLOAD_URL}"
-    
+
     # Download toolchain from download_url to pkg_name
     local -r pkg_name="$(basename "${TOOLCHAIN_DOWNLOAD_URL}")"
     if ! download_content_from_url "${TOOLCHAIN_DOWNLOAD_URL}" "${pkg_name}" "toolchain archive"; then
       # Failed to download the toolchain
       return ${RETCODE_ERROR}
     fi
-    
+
     tar xf "${pkg_name}"
     popd
   fi
@@ -345,11 +350,6 @@ set_compilation_env() {
 }
 
 configure_kernel_src() {
-  if is_precompiled_installer; then
-    info "Found pre-compiled installer, skip configuring kernel sources"
-    return
-  fi
-
   info "Configuring kernel sources"
   pushd "${KERNEL_SRC_DIR}"
   zcat /proc/config.gz > .config
@@ -409,28 +409,35 @@ configure_nvidia_installation_dirs() {
 run_nvidia_installer() {
   info "Running Nvidia installer"
   pushd "${NVIDIA_INSTALL_DIR_CONTAINER}"
+  local installer_args=(
+    "--utility-prefix=${NVIDIA_INSTALL_DIR_CONTAINER}"
+    "--opengl-prefix=${NVIDIA_INSTALL_DIR_CONTAINER}"
+    "--no-install-compat32-libs"
+    "--log-file-name=${NVIDIA_INSTALL_DIR_CONTAINER}/nvidia-installer.log"
+    "--silent"
+    "--accept-license"
+  )
+  if ! is_precompiled_driver; then
+    installer_args+=("--kernel-source-path=${KERNEL_SRC_DIR}")
+  fi
+
+  if decompress_driver_signature; then
+    info "Found driver signature, will sign GPU drivers."
+    installer_args+=(
+      "--module-signing-secret-key=$(get_private_key)"
+      "--module-signing-public-key=$(get_public_key_pem)"
+      "--module-signing-script=/sign_gpu_driver.sh"
+      "--module-signing-hash=sha256"
+    )
+    load_public_key
+  fi
+
   local -r dir_to_extract="/tmp/extract"
   # Extract files to a fixed path first to make sure md5sum of generated gpu
   # drivers are consistent.
   sh "${INSTALLER_FILE}" -x --target "${dir_to_extract}"
-  if is_precompiled_installer; then
-    "${dir_to_extract}/nvidia-installer" \
-      --utility-prefix="${NVIDIA_INSTALL_DIR_CONTAINER}" \
-      --opengl-prefix="${NVIDIA_INSTALL_DIR_CONTAINER}" \
-      --no-install-compat32-libs \
-      --log-file-name="${NVIDIA_INSTALL_DIR_CONTAINER}/nvidia-installer.log" \
-      --silent \
-      --accept-license
-  else
-    "${dir_to_extract}/nvidia-installer" \
-      --kernel-source-path="${KERNEL_SRC_DIR}" \
-      --utility-prefix="${NVIDIA_INSTALL_DIR_CONTAINER}" \
-      --opengl-prefix="${NVIDIA_INSTALL_DIR_CONTAINER}" \
-      --no-install-compat32-libs \
-      --log-file-name="${NVIDIA_INSTALL_DIR_CONTAINER}/nvidia-installer.log" \
-      --silent \
-      --accept-license
-  fi
+  "${dir_to_extract}/nvidia-installer" "${installer_args[@]}"
+
   popd
 }
 
@@ -501,19 +508,33 @@ main() {
   else
     lock
     load_etc_os_release
-    configure_kernel_module_locking
     if check_cached_version; then
+      if [[ "${CACHE_DRIVER_SIGNED}" != "true" ]]; then
+        info "Cached driver is not signed. Need to disable module locking."
+        configure_kernel_module_locking
+      fi
       configure_cached_installation
       verify_nvidia_installation
       info "Found cached version, NOT building the drivers."
     else
       info "Did not find cached version, building the drivers..."
+      download_driver_signature "${COS_DOWNLOAD_GCS}" "${BUILD_ID}"
+      if ! has_driver_signature; then
+        info "Failed to find driver signature. Need to disable module locking."
+        configure_kernel_module_locking
+      fi
       download_nvidia_installer
-      download_kernel_src
+      if ! is_precompiled_driver; then
+        info "Did not find pre-compiled driver, need to download kernel sources."
+        download_kernel_src
+      fi
       set_compilation_env
       install_cross_toolchain_pkg
       configure_nvidia_installation_dirs
-      configure_kernel_src
+      if ! is_precompiled_driver; then
+        info "Did not find  pre-compiled driver, need to configure kernel sources."
+        configure_kernel_src
+      fi
       run_nvidia_installer
       update_cached_version
       verify_nvidia_installation
