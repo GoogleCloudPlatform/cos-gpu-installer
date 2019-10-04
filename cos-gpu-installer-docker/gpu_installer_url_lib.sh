@@ -15,8 +15,6 @@
 # limitations under the License.
 
 
-source driver_signature_lib.sh
-
 GPU_INSTALLER_DOWNLOAD_URL=""
 
 get_major_version() {
