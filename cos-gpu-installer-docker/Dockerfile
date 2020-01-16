@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Dockerfile for the COS Module Builder container.
+# Dockerfile for the COS GPU Installer container.
 
 FROM debian:9
 LABEL maintainer="cos-containers@google.com"
