@@ -21,7 +21,7 @@ set -u
 
 set -x
 COS_DOWNLOAD_GCS="https://storage.googleapis.com/cos-tools"
-COS_KERNEL_SRC_GIT="https://chromium.googlesource.com/chromiumos/third_party/kernel"
+COS_KERNEL_INFO_FILENAME="kernel_info"
 COS_KERNEL_SRC_ARCHIVE="kernel-src.tar.gz"
 TOOLCHAIN_URL_FILENAME="toolchain_url"
 TOOLCHAIN_ARCHIVE="toolchain.tar.xz"
@@ -48,6 +48,9 @@ TOOLCHAIN_DOWNLOAD_URL=""
 CC=""
 CXX=""
 
+# Kernel source repository url
+COS_KERNEL_SRC_GIT=""
+
 RETCODE_SUCCESS=0
 RETCODE_ERROR=1
 RETRY_COUNT=${RETRY_COUNT:-5}
@@ -59,7 +62,6 @@ INSTALLER_FILE=""
 PRELOAD="${PRELOAD:-false}"
 
 source gpu_installer_url_lib.sh
-source driver_signature_lib.sh
 
 _log() {
   local -r prefix="$1"
@@ -204,6 +206,25 @@ is_precompiled_driver() {
   [[ "${INSTALLER_FILE##*.}" == "cos" ]] && has_precompiled_driver_signature || return $?
 }
 
+# Get the COS kernel repository path used for kernel.
+get_kernel_source_repo() {
+  info "Getting the kernel source repository path."
+  # Get kernel_info from COS GCS bucket.
+  local -r kernel_info_file_path="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${COS_KERNEL_INFO_FILENAME}"
+  info "Obtaining kernel_info file from ${kernel_info_file_path}."
+
+  # Download kernel_info if present.
+  if ! download_content_from_url "${kernel_info_file_path}" "${COS_KERNEL_INFO_FILENAME}" "kernel_info file"; then
+        # Required to support COS builds not having kernel_info file.
+        COS_KERNEL_SRC_GIT="https://chromium.googlesource.com/chromiumos/third_party/kernel"
+  else
+        # Successful download of kernel_info file.
+        # kernel_info file have URL for the kernel repository.
+        # Example: URL=https://chromium.googlesource.com/chromiumos/third_party/kernel
+        COS_KERNEL_SRC_GIT="$(grep -o "URL=[^,]*" ${COS_KERNEL_INFO_FILENAME} | cut -d "=" -f 2)"
+  fi
+}
+
 download_kernel_src_from_gcs() {
   local -r download_url="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${COS_KERNEL_SRC_ARCHIVE}"
   download_content_from_url "${download_url}" "${COS_KERNEL_SRC_ARCHIVE}" "kernel sources"
@@ -316,7 +337,7 @@ install_cross_toolchain_pkg() {
     tar xf "${pkg_name}"
     popd
   fi
-  
+
   info "Configuring environment variables for cross-compilation"
   export PATH="${TOOLCHAIN_PKG_DIR}/bin:${PATH}"
   export SYSROOT="${TOOLCHAIN_PKG_DIR}/usr/x86_64-cros-linux-gnu"
@@ -499,15 +520,15 @@ parse_opt() {
 main() {
   parse_opt "$@"
   info "PRELOAD: ${PRELOAD}"
+  load_etc_os_release
+  get_kernel_source_repo
   if [[ "$PRELOAD" == "true" ]]; then
-    load_etc_os_release
     set_compilation_env
     install_cross_toolchain_pkg
     download_kernel_src
     info "Finished installing the cross toolchain package and kernel source."
   else
     lock
-    load_etc_os_release
     if check_cached_version; then
       if [[ "${CACHE_DRIVER_SIGNED}" != "true" ]]; then
         info "Cached driver is not signed. Need to disable module locking."
