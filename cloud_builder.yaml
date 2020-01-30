@@ -18,7 +18,10 @@ steps:
       "--cache-from", "gcr.io/$PROJECT_ID/cos-gpu-installer:latest",
       "."]
     dir: cos-gpu-installer-docker
-    waitFor: ["-"]
+    waitFor:
+      - cos-gpu-installer
+
+logsBucket: fathom-containers-cloud-build-logs-36tugmiz
 
 images:
   - gcr.io/$PROJECT_ID/cos-gpu-installer
