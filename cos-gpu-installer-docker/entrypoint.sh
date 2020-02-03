@@ -51,6 +51,9 @@ CXX=""
 # Kernel source repository url
 COS_KERNEL_SRC_GIT=""
 
+# COS internal gcs bucket
+COS_INTERNAL_DOWNLOAD_GCS=""
+
 RETCODE_SUCCESS=0
 RETCODE_ERROR=1
 RETRY_COUNT=${RETRY_COUNT:-5}
@@ -97,6 +100,12 @@ load_etc_os_release() {
   fi
   . "${ROOT_OS_RELEASE}"
   info "Running on COS build id ${BUILD_ID}"
+}
+
+# Set COS Internal GCS Bucket.
+set_cos_internal_gcs_bucket() {
+  COS_INTERNAL_DOWNLOAD_GCS="https://storage.googleapis.com/container-vm-image-staging/lakitu-release/R${VERSION_ID}-${BUILD_ID}"
+  info "COS internal gcs bucket ${COS_INTERNAL_DOWNLOAD_GCS}"
 }
 
 reboot_machine() {
@@ -206,15 +215,19 @@ is_precompiled_driver() {
   [[ "${INSTALLER_FILE##*.}" == "cos" ]] && has_precompiled_driver_signature || return $?
 }
 
+# Download kernel_info file.
+download_kernel_info_file() {
+  local -r cos_build_gcs_path=${1}
+  local -r kernel_info_file_path="${cos_build_gcs_path}/${COS_KERNEL_INFO_FILENAME}"
+  info "Obtaining kernel_info file from ${kernel_info_file_path}"
+  download_content_from_url "${kernel_info_file_path}" "${COS_KERNEL_INFO_FILENAME}" "kernel_info file"
+}
+
 # Get the COS kernel repository path used for kernel.
 get_kernel_source_repo() {
   info "Getting the kernel source repository path."
-  # Get kernel_info from COS GCS bucket.
-  local -r kernel_info_file_path="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${COS_KERNEL_INFO_FILENAME}"
-  info "Obtaining kernel_info file from ${kernel_info_file_path}."
-
   # Download kernel_info if present.
-  if ! download_content_from_url "${kernel_info_file_path}" "${COS_KERNEL_INFO_FILENAME}" "kernel_info file"; then
+  if ! download_kernel_info_file "${COS_DOWNLOAD_GCS}/${BUILD_ID}" && ! download_kernel_info_file "${COS_INTERNAL_DOWNLOAD_GCS}"; then
         # Required to support COS builds not having kernel_info file.
         COS_KERNEL_SRC_GIT="https://chromium.googlesource.com/chromiumos/third_party/kernel"
   else
@@ -343,16 +356,21 @@ install_cross_toolchain_pkg() {
   export SYSROOT="${TOOLCHAIN_PKG_DIR}/usr/x86_64-cros-linux-gnu"
 }
 
+# Download toolchain_env file.
+download_toolchain_env() {
+  # Get toolchain_env path from COS GCS bucket
+  local -r cos_build_gcs_path=${1}
+  local -r tc_info_file_path="${cos_build_gcs_path}/${TOOLCHAIN_ENV_FILENAME}"
+  info "Obtaining toolchain_env file from ${tc_info_file_path}"
+  download_content_from_url "${tc_info_file_path}" "${TOOLCHAIN_ENV_FILENAME}" "toolchain_env file"
+}
+
 # Set-up compilation environment for compiling GPU drivers
 # using toolchain used for kernel compilation
 set_compilation_env() {
   info "Setting up compilation environment"
-  # Get toolchain_env path from COS GCS bucket
-  local -r tc_info_file_path="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_ENV_FILENAME}"
-  info "Obtaining toolchain_env file from ${tc_info_file_path}"
-
   # Download toolchain_env if present
-  if ! download_content_from_url "${tc_info_file_path}" "${TOOLCHAIN_ENV_FILENAME}" "toolchain_env file"; then
+  if ! download_toolchain_env "${COS_DOWNLOAD_GCS}/${BUILD_ID}" && ! download_toolchain_env "${COS_INTERNAL_DOWNLOAD_GCS}" ; then
         # Required to support COS builds not having toolchain_env file
         TOOLCHAIN_DOWNLOAD_URL=$(get_cross_toolchain_pkg)
         CC="x86_64-cros-linux-gnu-gcc"
@@ -363,7 +381,7 @@ set_compilation_env() {
         # variable based on the toolchain used for kernel compilation
         source "${TOOLCHAIN_ENV_FILENAME}"
         # Downloading toolchain from COS GCS Bucket
-        TOOLCHAIN_DOWNLOAD_URL="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_ARCHIVE}"
+        TOOLCHAIN_DOWNLOAD_URL=$(get_cross_toolchain_pkg)
   fi
 
   export CC
@@ -521,6 +539,7 @@ main() {
   parse_opt "$@"
   info "PRELOAD: ${PRELOAD}"
   load_etc_os_release
+  set_cos_internal_gcs_bucket
   get_kernel_source_repo
   if [[ "$PRELOAD" == "true" ]]; then
     set_compilation_env
