@@ -20,7 +20,6 @@ set -o pipefail
 set -u
 
 set -x
-COS_DOWNLOAD_GCS="https://storage.googleapis.com/cos-tools"
 COS_KERNEL_INFO_FILENAME="kernel_info"
 COS_KERNEL_SRC_ARCHIVE="kernel-src.tar.gz"
 TOOLCHAIN_URL_FILENAME="toolchain_url"
@@ -51,8 +50,8 @@ CXX=""
 # Kernel source repository url
 COS_KERNEL_SRC_GIT=""
 
-# COS internal gcs bucket
-COS_INTERNAL_DOWNLOAD_GCS=""
+# URL prefix to use for data dependencies
+COS_DOWNLOAD_GCS="${COS_DOWNLOAD_GCS:-}"
 
 RETCODE_SUCCESS=0
 RETCODE_ERROR=1
@@ -102,10 +101,12 @@ load_etc_os_release() {
   info "Running on COS build id ${BUILD_ID}"
 }
 
-# Set COS Internal GCS Bucket.
-set_cos_internal_gcs_bucket() {
-  COS_INTERNAL_DOWNLOAD_GCS="https://storage.googleapis.com/container-vm-image-staging/lakitu-release/R${VERSION_ID}-${BUILD_ID}"
-  info "COS internal gcs bucket ${COS_INTERNAL_DOWNLOAD_GCS}"
+# Set COS_DOWNLOAD_GCS, if unset.
+set_cos_download_gcs() {
+  if [[ -z "${COS_DOWNLOAD_GCS}" ]]; then
+    COS_DOWNLOAD_GCS="https://storage.googleapis.com/cos-tools/${BUILD_ID}"
+  fi
+  info "Data dependencies (e.g. kernel source) will be fetched from ${COS_DOWNLOAD_GCS}"
 }
 
 reboot_machine() {
@@ -227,7 +228,7 @@ download_kernel_info_file() {
 get_kernel_source_repo() {
   info "Getting the kernel source repository path."
   # Download kernel_info if present.
-  if ! download_kernel_info_file "${COS_DOWNLOAD_GCS}/${BUILD_ID}" && ! download_kernel_info_file "${COS_INTERNAL_DOWNLOAD_GCS}"; then
+  if ! download_kernel_info_file "${COS_DOWNLOAD_GCS}"; then
         # Required to support COS builds not having kernel_info file.
         COS_KERNEL_SRC_GIT="https://chromium.googlesource.com/chromiumos/third_party/kernel"
   else
@@ -239,7 +240,7 @@ get_kernel_source_repo() {
 }
 
 download_kernel_src_from_gcs() {
-  local -r download_url="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${COS_KERNEL_SRC_ARCHIVE}"
+  local -r download_url="${COS_DOWNLOAD_GCS}/${COS_KERNEL_SRC_ARCHIVE}"
   download_content_from_url "${download_url}" "${COS_KERNEL_SRC_ARCHIVE}" "kernel sources"
 }
 
@@ -322,7 +323,7 @@ get_cross_toolchain_pkg() {
     local -r download_url="${CHROMIUMOS_SDK_GCS}/${tc_path}"
   else
     # Next, check if the toolchain path is available in GCS.
-    local -r tc_path_url="${COS_DOWNLOAD_GCS}/${BUILD_ID}/${TOOLCHAIN_URL_FILENAME}"
+    local -r tc_path_url="${COS_DOWNLOAD_GCS}/${TOOLCHAIN_URL_FILENAME}"
     info "Obtaining toolchain download URL from ${tc_path_url}"
     local -r download_url="$(curl -sfS "${tc_path_url}")"
   fi
@@ -370,7 +371,7 @@ download_toolchain_env() {
 set_compilation_env() {
   info "Setting up compilation environment"
   # Download toolchain_env if present
-  if ! download_toolchain_env "${COS_DOWNLOAD_GCS}/${BUILD_ID}" && ! download_toolchain_env "${COS_INTERNAL_DOWNLOAD_GCS}" ; then
+  if ! download_toolchain_env "${COS_DOWNLOAD_GCS}"; then
         # Required to support COS builds not having toolchain_env file
         TOOLCHAIN_DOWNLOAD_URL=$(get_cross_toolchain_pkg)
         CC="x86_64-cros-linux-gnu-gcc"
@@ -539,7 +540,7 @@ main() {
   parse_opt "$@"
   info "PRELOAD: ${PRELOAD}"
   load_etc_os_release
-  set_cos_internal_gcs_bucket
+  set_cos_download_gcs
   get_kernel_source_repo
   if [[ "$PRELOAD" == "true" ]]; then
     set_compilation_env
@@ -558,7 +559,7 @@ main() {
       info "Found cached version, NOT building the drivers."
     else
       info "Did not find cached version, building the drivers..."
-      download_driver_signature "${COS_DOWNLOAD_GCS}" "${BUILD_ID}"
+      download_driver_signature "${COS_DOWNLOAD_GCS}"
       if ! has_driver_signature; then
         info "Failed to find driver signature. Need to disable module locking."
         configure_kernel_module_locking
