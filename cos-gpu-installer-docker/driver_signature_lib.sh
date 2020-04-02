@@ -23,26 +23,24 @@ readonly GPU_DRIVER_PRIVATE_KEY="dummy-key"
 readonly GPU_DRIVER_SIGNING_DIR="/build/sign-gpu-driver"
 
 download_artifact_from_gcs() {
-  local -r gcs_bucket="$1"
-  local -r build_id="$2"
-  local -r filename="$3"
-  local -r download_url="${gcs_bucket}/${build_id}/${filename}"
+  local -r gcs_url_prefix="$1"
+  local -r filename="$2"
+  local -r download_url="${gcs_url_prefix}/${filename}"
   local -r output_path="${GPU_DRIVER_SIGNING_DIR}/${filename}"
 
   download_content_from_url "${download_url}" "${output_path}" "${filename}"
 }
 
 download_driver_signature() {
-  local -r gcs_bucket="$1"
-  local -r build_id="$2"
+  local -r gcs_url_prefix="$1"
 
   mkdir -p "${GPU_DRIVER_SIGNING_DIR}"
   # Try to Download GPU driver signature. If fail then return immediately to
   # reduce latency because in such case precompiled GPU driver signature must
   # not exist.
-  download_artifact_from_gcs "${gcs_bucket}" "${build_id}" "${GPU_DRIVER_SIGNATURE}" || return 0
+  download_artifact_from_gcs "${gcs_url_prefix}" "${GPU_DRIVER_SIGNATURE}" || return 0
   # Try to download precompiled GPU driver signature
-  download_artifact_from_gcs "${gcs_bucket}" "${build_id}" "${GPU_PRECOMPILED_DRIVER_SIGNATURE}" || true
+  download_artifact_from_gcs "${gcs_url_prefix}" "${GPU_PRECOMPILED_DRIVER_SIGNATURE}" || true
 }
 
 has_driver_signature() {
