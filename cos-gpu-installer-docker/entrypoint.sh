@@ -182,7 +182,6 @@ update_cached_version() {
   cat >"${CACHE_FILE}"<<__EOF__
 CACHE_BUILD_ID=${BUILD_ID}
 CACHE_NVIDIA_DRIVER_VERSION=${NVIDIA_DRIVER_VERSION}
-CACHE_DRIVER_SIGNED=$(has_driver_signature && echo true || echo false)
 __EOF__
 
   info "Updated cached version as:"
@@ -211,9 +210,7 @@ download_nvidia_installer() {
 
 is_precompiled_driver() {
   # Helper function to decide whether the gpu drvier is pre-compiled.
-  # A gpu driver is pre-compiled if it has a cos specific installer and
-  # the corresponding driver signature exists.
-  [[ "${INSTALLER_FILE##*.}" == "cos" ]] && has_precompiled_driver_signature || return $?
+  [[ "${INSTALLER_FILE##*.}" == "cos" ]] || return $?
 }
 
 # Download kernel_info file.
@@ -461,17 +458,6 @@ run_nvidia_installer() {
     installer_args+=("--kernel-source-path=${KERNEL_SRC_DIR}")
   fi
 
-  if decompress_driver_signature; then
-    info "Found driver signature, will sign GPU drivers."
-    installer_args+=(
-      "--module-signing-secret-key=$(get_private_key)"
-      "--module-signing-public-key=$(get_public_key_pem)"
-      "--module-signing-script=/sign_gpu_driver.sh"
-      "--module-signing-hash=sha256"
-    )
-    load_public_key
-  fi
-
   local -r dir_to_extract="/tmp/extract"
   # Extract files to a fixed path first to make sure md5sum of generated gpu
   # drivers are consistent.
@@ -549,21 +535,13 @@ main() {
     info "Finished installing the cross toolchain package and kernel source."
   else
     lock
+    configure_kernel_module_locking
     if check_cached_version; then
-      if [[ "${CACHE_DRIVER_SIGNED}" != "true" ]]; then
-        info "Cached driver is not signed. Need to disable module locking."
-        configure_kernel_module_locking
-      fi
       configure_cached_installation
       verify_nvidia_installation
       info "Found cached version, NOT building the drivers."
     else
       info "Did not find cached version, building the drivers..."
-      download_driver_signature "${COS_DOWNLOAD_GCS}"
-      if ! has_driver_signature; then
-        info "Failed to find driver signature. Need to disable module locking."
-        configure_kernel_module_locking
-      fi
       download_nvidia_installer
       if ! is_precompiled_driver; then
         info "Did not find pre-compiled driver, need to download kernel sources."
