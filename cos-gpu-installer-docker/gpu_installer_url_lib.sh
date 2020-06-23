@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-GPU_INSTALLER_DOWNLOAD_URL=""
+GPU_INSTALLER_DOWNLOAD_URL="${GPU_INSTALLER_DOWNLOAD_URL:-}"
 
 get_major_version() {
   echo "$1" | cut -d "." -f 1
