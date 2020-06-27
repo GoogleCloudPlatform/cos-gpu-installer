@@ -22,6 +22,7 @@ set -u
 set -x
 COS_KERNEL_INFO_FILENAME="kernel_info"
 COS_KERNEL_SRC_ARCHIVE="kernel-src.tar.gz"
+COS_KERNEL_SRC_HEADER="kernel-headers.tgz"
 TOOLCHAIN_URL_FILENAME="toolchain_url"
 TOOLCHAIN_ARCHIVE="toolchain.tar.xz"
 TOOLCHAIN_ENV_FILENAME="toolchain_env"
@@ -29,6 +30,7 @@ TOOLCHAIN_PKG_DIR="${TOOLCHAIN_PKG_DIR:-/build/cos-tools}"
 CHROMIUMOS_SDK_GCS="https://storage.googleapis.com/chromiumos-sdk"
 ROOT_OS_RELEASE="${ROOT_OS_RELEASE:-/root/etc/os-release}"
 KERNEL_SRC_DIR="${KERNEL_SRC_DIR:-/build/usr/src/linux}"
+KERNEL_SRC_HEADER="${KERNEL_SRC_HEADER:-/build/usr/src/linux-headers}"
 NVIDIA_DRIVER_VERSION="${NVIDIA_DRIVER_VERSION:-418.67}"
 NVIDIA_DRIVER_MD5SUM="${NVIDIA_DRIVER_MD5SUM:-}"
 NVIDIA_INSTALL_DIR_HOST="${NVIDIA_INSTALL_DIR_HOST:-/var/lib/nvidia}"
@@ -261,6 +263,21 @@ download_kernel_src() {
   fi
 }
 
+download_kernel_headers() {
+  if [[ -z "$(ls -A "${KERNEL_SRC_HEADER}")" ]]; then
+    info "Downloading kernel headers"
+    mkdir -p "${KERNEL_SRC_HEADER}"
+    pushd "${KERNEL_SRC_HEADER}"
+    if ! download_content_from_url "${COS_DOWNLOAD_GCS}/${COS_KERNEL_SRC_HEADER}" "${COS_KERNEL_SRC_HEADER}" "kernel headers"; then
+      popd
+      return ${RETCODE_ERROR}
+    fi
+    tar xf "${COS_KERNEL_SRC_HEADER}"
+    cp -r "usr/src/linux-headers-$(uname -r)"/* ./
+    popd
+  fi
+}
+
 # Gets default service account credentials of the VM which cos-gpu-installer runs in.
 # These credentials are needed to access GCS buckets.
 get_default_vm_credentials() {
@@ -404,6 +421,9 @@ configure_kernel_src() {
 
   # COS doesn't enable module versioning, disable Module.symvers file check.
   export IGNORE_MISSING_MODULE_SYMVERS=1
+
+  # Copy Module.symvers as it is required by new GPU drivers.
+  cp "${KERNEL_SRC_HEADER}/Module.symvers" "${KERNEL_SRC_DIR}"
 }
 
 configure_nvidia_installation_dirs() {
@@ -546,6 +566,7 @@ main() {
       if ! is_precompiled_driver; then
         info "Did not find pre-compiled driver, need to download kernel sources."
         download_kernel_src
+        download_kernel_headers
       fi
       set_compilation_env
       install_cross_toolchain_pkg
