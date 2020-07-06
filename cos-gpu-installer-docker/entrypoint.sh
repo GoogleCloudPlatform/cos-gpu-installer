@@ -39,6 +39,7 @@ ROOT_MOUNT_DIR="${ROOT_MOUNT_DIR:-/root}"
 CACHE_FILE="${NVIDIA_INSTALL_DIR_CONTAINER}/.cache"
 LOCK_FILE="${ROOT_MOUNT_DIR}/tmp/cos_gpu_installer_lock"
 LOCK_FILE_FD=20
+KERNEL_VERSION=$(uname -r)
 set +x
 
 # TOOLCHAIN_DOWNLOAD_URL, CC and CXX are set by
@@ -229,7 +230,11 @@ get_kernel_source_repo() {
   # Download kernel_info if present.
   if ! download_kernel_info_file "${COS_DOWNLOAD_GCS}"; then
         # Required to support COS builds not having kernel_info file.
-        COS_KERNEL_SRC_GIT="https://chromium.googlesource.com/chromiumos/third_party/kernel"
+        if [[ ${KERNEL_VERSION} == 5.4.* ]]; then
+          COS_KERNEL_SRC_GIT="https://cos.googlesource.com/third_party/kernel"
+        else
+          COS_KERNEL_SRC_GIT="https://chromium.googlesource.com/chromiumos/third_party/kernel"
+        fi
   else
         # Successful download of kernel_info file.
         # kernel_info file have URL for the kernel repository.
@@ -273,7 +278,7 @@ download_kernel_headers() {
       return ${RETCODE_ERROR}
     fi
     tar xf "${COS_KERNEL_SRC_HEADER}"
-    cp -r "usr/src/linux-headers-$(uname -r)"/* ./
+    cp -r "usr/src/linux-headers-${KERNEL_VERSION}"/* ./
     popd
   fi
 }
@@ -415,7 +420,7 @@ configure_kernel_src() {
   make CC="${CC}" CXX="${CXX}" modules_prepare
 
   # TODO: Figure out why the kernel magic version hack is required.
-  local kernel_version_uname="$(uname -r)"
+  local kernel_version_uname="${KERNEL_VERSION}"
   local kernel_version_src="$(cat include/generated/utsrelease.h | awk '{ print $3 }' | tr -d '"')"
   if [[ "${kernel_version_uname}" != "${kernel_version_src}" ]]; then
     info "Modifying kernel version magic string in source files"
@@ -456,14 +461,14 @@ configure_nvidia_installation_dirs() {
   # workaround ensures that the modules are accessible from outside the
   # installer container filesystem.
   mkdir -p drivers drivers-workdir
-  mkdir -p /lib/modules/"$(uname -r)"/video
-  mount -t overlay -o lowerdir=/lib/modules/"$(uname -r)"/video,upperdir=drivers,workdir=drivers-workdir none /lib/modules/"$(uname -r)"/video
+  mkdir -p /lib/modules/"${KERNEL_VERSION}"/video
+  mount -t overlay -o lowerdir=/lib/modules/"${KERNEL_VERSION}"/video,upperdir=drivers,workdir=drivers-workdir none /lib/modules/"${KERNEL_VERSION}"/video
 
   # Populate ld.so.conf to avoid warning messages in nvidia-installer logs.
   update_container_ld_cache
 
   # Install an exit handler to cleanup the overlayfs mount points.
-  trap "{ umount /lib/modules/\"$(uname -r)\"/video; umount /usr/lib/x86_64-linux-gnu ; umount /usr/bin; }" EXIT
+  trap "{ umount /lib/modules/\"${KERNEL_VERSION}\"/video; umount /usr/lib/x86_64-linux-gnu ; umount /usr/bin; }" EXIT
   popd
 }
 
