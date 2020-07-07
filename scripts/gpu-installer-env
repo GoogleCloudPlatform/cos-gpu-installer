@@ -1,6 +1,7 @@
 # Change or Uncomment following variables if you need to install
 # a different gpu driver version, install to different location, etc.
-
+# Those variables are environmental variables passed to docker command.
+#
 NVIDIA_DRIVER_VERSION=440.64.00
 # NVIDIA_DRIVER_MD5SUM=662865d9a7b5ef1ac3402e098a5fb91f
 # COS_NVIDIA_INSTALLER_CONTAINER=gcr.io/cos-cloud/cos-gpu-installer:latest
@@ -8,3 +9,4 @@ NVIDIA_DRIVER_VERSION=440.64.00
 # NVIDIA_INSTALL_DIR_CONTAINER=/usr/local/nvidia
 # ROOT_MOUNT_DIR=/root
 # CUDA_TEST_CONTAINER=gcr.io/google_containers/cuda-vector-add:v0.1
+# COS_DOWNLOAD_GCS=https://storage.googleapis.com/royyang-cos-testdev_cloudbuild/R86-13330.0.0
