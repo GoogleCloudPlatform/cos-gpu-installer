@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Dockerfile for the COS Module Builder container.
+# Dockerfile for the COS GPU Installer container.
 
 FROM marketplace.gcr.io/google/debian9
 LABEL maintainer="cos-containers@google.com"
@@ -23,12 +23,16 @@ RUN apt-get update -yqq \
 
 # Install minimal tools needed to build kernel modules.
 RUN apt-get update -qq && \
-    apt-get install -y xz-utils python2.7-minimal kmod git make bc curl ccache libc6-dev pciutils gcc libelf-dev libssl-dev && \
+    apt-get install -y xz-utils python2.7-minimal kmod git make bc curl ccache \
+    libc6-dev pciutils gcc libelf-dev libssl-dev bison flex keyutils && \
     rm -rf /var/lib/apt/lists/*
 
 # Download & install prebuild COS toolchain package, and prepare the environment for cross-compiling.
 RUN cd /usr/bin && ln -s python2.7 python && ln -s python2.7 python2
 
 COPY README.container /README
+COPY gpu_installer_url_lib.sh /gpu_installer_url_lib.sh
+COPY driver_signature_lib.sh /driver_signature_lib.sh
+COPY sign_gpu_driver.sh /sign_gpu_driver.sh
 COPY entrypoint.sh /entrypoint.sh
 CMD /entrypoint.sh
