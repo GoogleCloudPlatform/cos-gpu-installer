@@ -21,16 +21,13 @@ set -u
 
 set -x
 COS_KERNEL_INFO_FILENAME="kernel_info"
-COS_KERNEL_SRC_ARCHIVE="kernel-src.tar.gz"
 COS_KERNEL_SRC_HEADER="kernel-headers.tgz"
 TOOLCHAIN_URL_FILENAME="toolchain_url"
-TOOLCHAIN_ARCHIVE="toolchain.tar.xz"
 TOOLCHAIN_ENV_FILENAME="toolchain_env"
 TOOLCHAIN_PKG_DIR="${TOOLCHAIN_PKG_DIR:-/build/cos-tools}"
 CHROMIUMOS_SDK_GCS="https://storage.googleapis.com/chromiumos-sdk"
 ROOT_OS_RELEASE="${ROOT_OS_RELEASE:-/root/etc/os-release}"
-KERNEL_SRC_DIR="${KERNEL_SRC_DIR:-/build/usr/src/linux}"
-KERNEL_SRC_HEADER="${KERNEL_SRC_HEADER:-/build/usr/src/linux-headers}"
+KERNEL_SRC_HEADER="${KERNEL_SRC_HEADER:-/build/usr/src/linux}"
 NVIDIA_DRIVER_VERSION="${NVIDIA_DRIVER_VERSION:-418.67}"
 NVIDIA_DRIVER_MD5SUM="${NVIDIA_DRIVER_MD5SUM:-}"
 NVIDIA_INSTALL_DIR_HOST="${NVIDIA_INSTALL_DIR_HOST:-/var/lib/nvidia}"
@@ -48,9 +45,6 @@ TOOLCHAIN_DOWNLOAD_URL=""
 # Compilation environment variables
 CC=""
 CXX=""
-
-# Kernel source repository url
-COS_KERNEL_SRC_GIT=""
 
 # URL prefix to use for data dependencies
 COS_DOWNLOAD_GCS="${COS_DOWNLOAD_GCS:-}"
@@ -204,7 +198,7 @@ download_nvidia_installer() {
   info "Downloading from ${gpu_installer_download_url}"
   INSTALLER_FILE="$(basename "${gpu_installer_download_url}")"
   download_content_from_url "${gpu_installer_download_url}" "${INSTALLER_FILE}" "GPU installer"
-  if [ ! -z "${NVIDIA_DRIVER_MD5SUM}" ]; then
+  if [ -n "${NVIDIA_DRIVER_MD5SUM}" ]; then
     echo "${NVIDIA_DRIVER_MD5SUM}" "${INSTALLER_FILE}" | md5sum --check
   fi
   popd
@@ -223,46 +217,6 @@ download_kernel_info_file() {
   download_content_from_url "${kernel_info_file_path}" "${COS_KERNEL_INFO_FILENAME}" "kernel_info file"
 }
 
-# Get the COS kernel repository path used for kernel.
-get_kernel_source_repo() {
-  info "Getting the kernel source repository path."
-  # Download kernel_info if present.
-  if ! download_kernel_info_file "${COS_DOWNLOAD_GCS}"; then
-        # Required to support COS builds not having kernel_info file.
-        COS_KERNEL_SRC_GIT="https://chromium.googlesource.com/chromiumos/third_party/kernel"
-  else
-        # Successful download of kernel_info file.
-        # kernel_info file have URL for the kernel repository.
-        # Example: URL=https://chromium.googlesource.com/chromiumos/third_party/kernel
-        COS_KERNEL_SRC_GIT="$(grep -o "URL=[^,]*" ${COS_KERNEL_INFO_FILENAME} | cut -d "=" -f 2)"
-  fi
-}
-
-download_kernel_src_from_gcs() {
-  local -r download_url="${COS_DOWNLOAD_GCS}/${COS_KERNEL_SRC_ARCHIVE}"
-  download_content_from_url "${download_url}" "${COS_KERNEL_SRC_ARCHIVE}" "kernel sources"
-}
-
-download_kernel_src_from_git_repo() {
-  # KERNEL_COMMIT_ID comes from /root/etc/os-release file.
-  local -r download_url="${COS_KERNEL_SRC_GIT}/+archive/${KERNEL_COMMIT_ID}.tar.gz"
-  download_content_from_url "${download_url}" "${COS_KERNEL_SRC_ARCHIVE}" "kernel sources"
-}
-
-download_kernel_src() {
-  if [[ -z "$(ls -A "${KERNEL_SRC_DIR}")" ]]; then
-    info "Kernel sources not found locally, downloading"
-    mkdir -p "${KERNEL_SRC_DIR}"
-    pushd "${KERNEL_SRC_DIR}"
-    if ! download_kernel_src_from_gcs && ! download_kernel_src_from_git_repo; then
-        popd
-        return ${RETCODE_ERROR}
-    fi
-    tar xf "${COS_KERNEL_SRC_ARCHIVE}"
-    popd
-  fi
-}
-
 download_kernel_headers() {
   if [[ -z "$(ls -A "${KERNEL_SRC_HEADER}")" ]]; then
     info "Downloading kernel headers"
@@ -273,7 +227,9 @@ download_kernel_headers() {
       return ${RETCODE_ERROR}
     fi
     tar xf "${COS_KERNEL_SRC_HEADER}"
+    rm "${COS_KERNEL_SRC_HEADER}"
     cp -r "usr/src/linux-headers-$(uname -r)"/* ./
+    rm -r usr
     popd
   fi
 }
@@ -347,7 +303,7 @@ get_cross_toolchain_pkg() {
 # Download, extracts and install the toolchain package
 install_cross_toolchain_pkg() {
   info "$TOOLCHAIN_PKG_DIR: $(ls -A "${TOOLCHAIN_PKG_DIR}")"
-  if [[ ! -z "$(ls -A "${TOOLCHAIN_PKG_DIR}")" ]]; then
+  if [[ -n "$(ls -A "${TOOLCHAIN_PKG_DIR}")" ]]; then
     info "Found existing toolchain package. Skipping download and installation"
     if mountpoint -q "${TOOLCHAIN_PKG_DIR}"; then
       info "${TOOLCHAIN_PKG_DIR} is a mountpoint; remounting as exec"
@@ -367,8 +323,16 @@ install_cross_toolchain_pkg() {
     fi
 
     tar xf "${pkg_name}"
+    rm "${pkg_name}"
     popd
   fi
+
+  info "Creating the ${TOOLCHAIN_PKG_DIR}/bin/ld symlink. \
+The nvidia installer expects an 'ld' executable to be in the PATH. \
+The nvidia installer does not respect the LD environment variable. \
+So we create a symlink to make sure the correct linker is used by \
+the nvidia installer."
+  ln -sf x86_64-cros-linux-gnu-ld "${TOOLCHAIN_PKG_DIR}/bin/ld"
 
   info "Configuring environment variables for cross-compilation"
   export PATH="${TOOLCHAIN_PKG_DIR}/bin:${PATH}"
@@ -405,29 +369,6 @@ set_compilation_env() {
 
   export CC
   export CXX
-}
-
-configure_kernel_src() {
-  info "Configuring kernel sources"
-  pushd "${KERNEL_SRC_DIR}"
-  zcat /proc/config.gz > .config
-  make CC="${CC}" CXX="${CXX}" olddefconfig
-  make CC="${CC}" CXX="${CXX}" modules_prepare
-
-  # TODO: Figure out why the kernel magic version hack is required.
-  local kernel_version_uname="$(uname -r)"
-  local kernel_version_src="$(cat include/generated/utsrelease.h | awk '{ print $3 }' | tr -d '"')"
-  if [[ "${kernel_version_uname}" != "${kernel_version_src}" ]]; then
-    info "Modifying kernel version magic string in source files"
-    sed -i "s|${kernel_version_src}|${kernel_version_uname}|g" "include/generated/utsrelease.h"
-  fi
-  popd
-
-  # COS doesn't enable module versioning, disable Module.symvers file check.
-  export IGNORE_MISSING_MODULE_SYMVERS=1
-
-  # Copy Module.symvers as it is required by new GPU drivers.
-  cp "${KERNEL_SRC_HEADER}/Module.symvers" "${KERNEL_SRC_DIR}"
 }
 
 configure_nvidia_installation_dirs() {
@@ -479,7 +420,7 @@ run_nvidia_installer() {
     "--accept-license"
   )
   if ! is_precompiled_driver; then
-    installer_args+=("--kernel-source-path=${KERNEL_SRC_DIR}")
+    installer_args+=("--kernel-source-path=${KERNEL_SRC_HEADER}")
   fi
 
   local -r dir_to_extract="/tmp/extract"
@@ -551,11 +492,10 @@ main() {
   info "PRELOAD: ${PRELOAD}"
   load_etc_os_release
   set_cos_download_gcs
-  get_kernel_source_repo
   if [[ "$PRELOAD" == "true" ]]; then
     set_compilation_env
     install_cross_toolchain_pkg
-    download_kernel_src
+    download_kernel_headers
     info "Finished installing the cross toolchain package and kernel source."
   else
     lock
@@ -569,16 +509,11 @@ main() {
       download_nvidia_installer
       if ! is_precompiled_driver; then
         info "Did not find pre-compiled driver, need to download kernel sources."
-        download_kernel_src
         download_kernel_headers
       fi
       set_compilation_env
       install_cross_toolchain_pkg
       configure_nvidia_installation_dirs
-      if ! is_precompiled_driver; then
-        info "Did not find  pre-compiled driver, need to configure kernel sources."
-        configure_kernel_src
-      fi
       run_nvidia_installer
       update_cached_version
       verify_nvidia_installation
