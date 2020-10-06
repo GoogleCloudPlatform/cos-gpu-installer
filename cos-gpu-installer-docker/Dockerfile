@@ -14,7 +14,7 @@
 #
 # Dockerfile for the COS GPU Installer container.
 
-FROM marketplace.gcr.io/google/debian9
+FROM marketplace.gcr.io/google/debian10
 LABEL maintainer="cos-containers@google.com"
 
 RUN apt-get update -yqq \
