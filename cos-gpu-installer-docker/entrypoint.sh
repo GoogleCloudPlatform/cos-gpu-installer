@@ -122,13 +122,9 @@ configure_kernel_module_locking() {
   pushd "${mount_path}"
 
   # Disable kernel module signature verification.
-  if grep -q "module.sig_enforce" /proc/cmdline; then
-    if grep -q "module.sig_enforce=1" /proc/cmdline; then
-      sed_cmds+=('s/module.sig_enforce=1/module.sig_enforce=0/g')
-    fi
-  else
-    sed_cmds+=('s/cros_efi/cros_efi module.sig_enforce=0/g')
-  fi;
+  if grep -q "module.sig_enforce=1" /proc/cmdline; then
+    sed_cmds+=('s/module.sig_enforce=1/module.sig_enforce=0/g')
+  fi
 
   # Disable loadpin.
   if grep -q "loadpin.enabled" /proc/cmdline; then
