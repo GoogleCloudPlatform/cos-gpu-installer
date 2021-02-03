@@ -53,14 +53,15 @@ default_installer_download_url() {
   if (( "${major_version}" < 390 )); then
     # Versions prior to 390 are downloaded from the upstream location.
     echo "https://us.download.nvidia.com/tesla/${driver_version}/NVIDIA-Linux-x86_64-${driver_version}.run"
-  elif (( "${major_version}" == 390 )); then
-    # The naming format changed after version 390.
+  elif (( "${major_version}" == 390 )) && (( "${minor_version}" == 46 )); then
+    # 390.46 is the only version residing in the TESLSA/ dir
     echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/TESLA/NVIDIA-Linux-x86_64-${driver_version}.run"
-  elif (( "${major_version}" >= 396 )) && (( "${minor_version}" >= 37 )); then
-    # Apparently the naming format changed again starting since 396.37.
-    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${driver_version}/NVIDIA-Linux-x86_64-${driver_version}.run"
-  else
+  elif (( "${major_version}" == 396 )) && (( "${minor_version}" == 26 )); then
+    # Different naming format for 396.26 including the -dignostic keyword.
     echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${driver_version}/NVIDIA-Linux-x86_64-${driver_version}-diagnostic.run"
+  else
+    # All other versions available in the gs conform to this naming convention.
+    echo "https://storage.googleapis.com/nvidia-drivers-${download_location}-public/tesla/${driver_version}/NVIDIA-Linux-x86_64-${driver_version}.run"
   fi
 }
 
