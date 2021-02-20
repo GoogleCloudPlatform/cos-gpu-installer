@@ -110,6 +110,11 @@ reboot_machine() {
   echo b > /proc/sysrq-trigger
 }
 
+is_secure_boot_enabled() {
+  local -r kernel_output="$(dmesg)"
+  echo "${kernel_output}" | grep -q 'Secure boot enabled'
+}
+
 configure_kernel_module_locking() {
   info "Checking if third party kernel modules can be installed"
   local -r esp_partition="/dev/sda12"
@@ -136,6 +141,11 @@ configure_kernel_module_locking() {
   fi
 
   if [ "${#sed_cmds[@]}" -gt 0 ]; then
+      # Check secure boot before try to modify kernel cmdline.
+      if is_secure_boot_enabled; then
+        error "Secure boot is enabled. Can't modify kernel cmdline."
+        exit ${RETCODE_ERROR}
+      fi
       cp "${grub_cfg}" "${grub_cfg}.orig"
       for sed_cmd in "${sed_cmds[@]}"; do
         sed "${sed_cmd}" -i "${grub_cfg}"
