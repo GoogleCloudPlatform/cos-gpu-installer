@@ -268,6 +268,7 @@ download_content_from_url() {
 
   local args=(
     -sfS
+    --http1.1
     "${download_url}"
     -o "${output_name}"
   )
@@ -301,7 +302,7 @@ get_cross_toolchain_pkg() {
     # Next, check if the toolchain path is available in GCS.
     local -r tc_path_url="${COS_DOWNLOAD_GCS}/${TOOLCHAIN_URL_FILENAME}"
     info "Obtaining toolchain download URL from ${tc_path_url}"
-    local -r download_url="$(curl -sfS "${tc_path_url}")"
+    local -r download_url="$(curl --http1.1 -sfS "${tc_path_url}")"
   fi
   echo "${download_url}"
 }
