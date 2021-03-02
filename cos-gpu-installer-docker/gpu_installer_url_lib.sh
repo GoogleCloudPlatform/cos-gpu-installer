@@ -26,7 +26,7 @@ get_minor_version() {
 
 get_download_location() {
   # projects/000000000000/zones/us-west1-a -> us
-  local -r instance_location="$(curl -sfS "http://metadata.google.internal/computeMetadata/v1/instance/zone" -H "Metadata-Flavor: Google" | cut -d '/' -f4 | cut -d '-' -f1)"
+  local -r instance_location="$(curl --http1.1 -sfS "http://metadata.google.internal/computeMetadata/v1/instance/zone" -H "Metadata-Flavor: Google" | cut -d '/' -f4 | cut -d '-' -f1)"
   declare -A location_mapping
   location_mapping=( ["us"]="us" ["asia"]="asia" ["europe"]="eu" )
   # Use us as default download location.
@@ -69,7 +69,7 @@ get_gpu_installer_url() {
   if [[ -z "${GPU_INSTALLER_DOWNLOAD_URL}" ]]; then
     # First try to find the precompiled gpu installer.
     local -r url="$(precompiled_installer_download_url "$@")"
-    if curl -s -I "${url}"  2>&1 | grep -q 'HTTP/2 200'; then
+    if curl --http1.1 -s -I "${url}"  2>&1 | grep -q 'HTTP/2 200'; then
       GPU_INSTALLER_DOWNLOAD_URL="${url}"
     else
       # Fallback to default gpu installer.
