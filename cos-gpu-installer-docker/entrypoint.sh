@@ -243,8 +243,7 @@ download_kernel_headers() {
 # Gets default service account credentials of the VM which cos-gpu-installer runs in.
 # These credentials are needed to access GCS buckets.
 get_default_vm_credentials() {
-  local -r creds="$(/"${ROOT_MOUNT_DIR}"/usr/share/google/get_metadata_value \
-    service-accounts/default/token)"
+  local -r creds="$(/get_metadata_value service-accounts/default/token)"
   local -r token=$(echo "${creds}" | python -c \
     'import sys; import json; print(json.loads(sys.stdin.read())["access_token"])')
   echo "${token}"

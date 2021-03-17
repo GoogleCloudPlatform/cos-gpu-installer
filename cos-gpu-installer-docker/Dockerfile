@@ -31,5 +31,6 @@ COPY README.container /README
 COPY gpu_installer_url_lib.sh /gpu_installer_url_lib.sh
 COPY driver_signature_lib.sh /driver_signature_lib.sh
 COPY sign_gpu_driver.sh /sign_gpu_driver.sh
+COPY get_metadata_value /get_metadata_value
 COPY entrypoint.sh /entrypoint.sh
 CMD /entrypoint.sh
