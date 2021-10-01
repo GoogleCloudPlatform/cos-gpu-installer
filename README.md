@@ -1,3 +1,6 @@
+# [ARCHIVED repository] COS GPU installer has relocated to https://cos.googlesource.com/cos/tools.
+## This Git repository is archived and is now read-only.
+
 # GPU Driver Installer containers for Container-Optimized OS from Google
 
 Note: This is not an official Google product.
